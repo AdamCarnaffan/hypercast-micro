@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "freertos.h": "c",
+        "portable.h": "c",
+        "portmacro.h": "c",
+        "esp_newlib.h": "c",
+        "esp_now.h": "c",
+        "nvs_flash.h": "c",
+        "esp_system.h": "c",
+        "esp_wifi.h": "c",
+        "esp_event.h": "c",
+        "esp_log.h": "c",
+        "event_groups.h": "c",
+        "hc_buffer.h": "c",
+        "array": "c",
+        "vector": "c",
+        "string_view": "c"
+    }
+}
