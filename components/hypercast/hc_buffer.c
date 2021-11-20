@@ -62,15 +62,14 @@ char* packet_digest_to_bytes(hc_packet_t *packet, int lengthBits, int offsetBits
     // Start with ye olde null termination
     digest[lengthBits / 4 + 1] = '\0';
     // Then digest the stuff that matters
-    int dataPointer = 0; // This points in the packet data array at where we're lookin
+    int dataPointer = 2; // This points in the packet data array at where we're lookin
     // Move the pointer by the offset
     if (offsetBits % 8 == 0) {
-        dataPointer += (offsetBits / 2) - 1;
+        dataPointer += (offsetBits / 2);
     } else {
         // Then it's a quirky 4 bit one
-        dataPointer += (offsetBits - 4) / 2 + 2;
+        dataPointer += (offsetBits - 4) / 2;
     }
-    if (offsetBits == 0) { dataPointer = 2; } // Move to the first bit if the offset didn't do it
     for (int i = 0; i < lengthBits / 4; i++) {
         // First add to the digest array
         digest[i] = packet->data[dataPointer];

@@ -1,2 +1,3 @@
-idf_component_register(SRCS "hc_protocols.c" "hypercast.c" "hc_buffer.c" "hc_engine.c" "hc_socket_interface.c"
+idf_component_register(SRCS "hc_protocols.c" "hypercast.c" "hc_buffer.c" "hc_engine.c" "hc_socket_interface.c" "hc_protocols.c"
+                    REQUIRES hypercast_protocols
                     INCLUDE_DIRS "include")
