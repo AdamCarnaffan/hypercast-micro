@@ -1,6 +1,6 @@
 // TODO: Return these to reading from the sdkconfig file configurations
-#define NETWORK_WIFI_SSID       "Pinecone-net"
-#define NETWORK_WIFI_PASSWORD   "Hentriacontagon31"
+#define NETWORK_WIFI_SSID       "Gargoyle"
+#define NETWORK_WIFI_PASSWORD   "password"
 #define NETWORK_MAX_RETRY       5
 #define NETWORK_QUEUE_SIZE      6
 

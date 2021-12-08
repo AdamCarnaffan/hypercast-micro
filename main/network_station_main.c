@@ -172,6 +172,9 @@ static void hc_socket_init() {
     // hc_allocate_buffer(&hc_buffer, HC_BUFFER_SIZE);
     // Init some kind of engine here with send and receive buffers?
 
+    // Now we finish socket init by starting the hypercast engine!
+    // xTaskCreate(hc_engine_handler, "HYPERCAST_engine_handler", 4096, (void *)&sock, 5, NULL);
+
     // We finish socket init by deploying our hypercast functionalities
     xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, (void *)&sock, 5, NULL);
     xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, (void *)&sock, 5, NULL);

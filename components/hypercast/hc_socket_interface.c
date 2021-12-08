@@ -59,7 +59,6 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
                         raddr_name, sizeof(raddr_name)-1);
         }
         ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
-        ESP_LOGI(TAG, "%.*s", len, recvbuf);
         // Then push the recvbuf into the hypercast buffer
         hc_push_buffer(&hc_buffer, recvbuf, len);
         ESP_LOGI(TAG, "length %d", hc_buffer.current_size);

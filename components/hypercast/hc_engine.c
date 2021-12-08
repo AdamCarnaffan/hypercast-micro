@@ -30,7 +30,7 @@ void hc_engine_handler(void *pvParameters) {
         if (packet == NULL) { vTaskDelay(500 / portTICK_PERIOD_MS); continue; }
         // Now we know we have a packet!
         // Parse time :)
-        // ESP_LOGI(TAG, "%s", packet->data);
+        ESP_LOGI(TAG, "Packet Received");
         // First thing to do is a length check.
         // There are only two allowable packet lengths, so lets make sure we meet one
         if (packet->size < HC_OVERLAY_PACKET_LENGTH) {
@@ -38,8 +38,8 @@ void hc_engine_handler(void *pvParameters) {
             continue;
         }
         // Now let's first check the HC protocol ID to see if we can handle this message
-        long protocolId = strtol(packet_digest_to_bytes(packet, 4, 0), NULL, 16); // It's only the first byte
-        ESP_LOGI(TAG, "%ld", protocolId);
+        long protocolId = packet_to_int(packet_snip_to_bytes(packet, 4, 0)); // It's only the first byte
+        ESP_LOGI(TAG, "Protocol ID: %ld", protocolId);
         // We can only handle 13 which is an overlay message, or a protocol message
         if (protocolId == HC_PROTOCOL_OVERLAY_MESSAGE) {
             // Send to forwarding engine

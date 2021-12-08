@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include "esp_log.h"
 
 #include "hc_buffer.h"
@@ -40,9 +41,9 @@ void hc_push_buffer(hc_buffer_t *buffer, char *data, int packet_length) {
     buffer->current_size++;
 }
 
-char* packet_digest_to_bytes(hc_packet_t *packet, int lengthBits, int offsetBits) {
+hc_packet_t* packet_snip_to_bytes(hc_packet_t *packet, int lengthBits, int offsetBits) {
     /*
-    * This function will take a packet and return a byte array of the digested portion
+    * This function will take a packet and return a pakcet of JUST the digested portion
     * Note that the length is in BITS to account for those 4 bit datas
     */
     // Because packet->data has a hex string, 4 bits is the lowest tolerable length, and the offset must be a multiple of 4
@@ -53,32 +54,47 @@ char* packet_digest_to_bytes(hc_packet_t *packet, int lengthBits, int offsetBits
     // According to the current input data we're using, only every 3rd and 4th byte is a valid hex character.
     // Each will account for 4 off the length, and only a third or fourth index will count for the offset
     // Before doing the parse, check that the packet size can accomadate the request
-    if (packet->size < (lengthBits / 4) + (offsetBits / 4)) {
+    if (packet->size < (lengthBits / 8) + (offsetBits / 8)) {
         ESP_LOGE(TAG, "Packet not large enough to digest");
         return NULL;
     }
     // Now we can start the digest
-    char *digest = malloc(sizeof(char) * (lengthBits / 4 + 1));
-    // Start with ye olde null termination
-    digest[lengthBits / 4 + 1] = '\0';
-    // Then digest the stuff that matters
-    int dataPointer = 2; // This points in the packet data array at where we're lookin
-    // Move the pointer by the offset
-    if (offsetBits % 8 == 0) {
-        dataPointer += (offsetBits / 2);
-    } else {
-        // Then it's a quirky 4 bit one
-        dataPointer += (offsetBits - 4) / 2;
-    }
-    for (int i = 0; i < lengthBits / 4; i++) {
-        // First add to the digest array
-        digest[i] = packet->data[dataPointer];
-        // Then move the pointer for the next
-        if (dataPointer % 4 == 3) {
-            dataPointer += 3;
+    char *digest = malloc(sizeof(char) * (ceil((double)lengthBits / 8)));
+    // We'll do a bit shift (kind of magic)
+    // Shift the packet->data by the offset bits, then mask with num bits in length as 1, others 0
+    // digest = ((char *)packet->data >> offsetBits) & ((1 << lengthBits) - 1);
+    int remainingBits = lengthBits;
+    int currentBit = offsetBits;
+    char byteTarget = 0x00;
+    while (remainingBits > 0) {
+        // First get the bit from the packet that we want
+        byteTarget = packet->data[currentBit / 8];
+        if (currentBit % 8 == 0) { byteTarget = byteTarget >> 4; }
+        else { byteTarget = byteTarget & 0x0F; }
+        // Now look to set the target half
+        if ((lengthBits - remainingBits) % 8 == 0) { 
+            digest[(lengthBits - remainingBits) / 8] = byteTarget; 
         } else {
-            dataPointer += 1;
+            digest[(lengthBits - remainingBits) / 8] = (digest[(lengthBits - remainingBits) / 8] << 4) | byteTarget;
         }
+        // Now tick
+        remainingBits -= 4;
+        currentBit += 4;
     }
-    return digest;
+
+    // Finish with ye olde packet building
+    hc_packet_t *snipped_packet = (hc_packet_t *)malloc(sizeof(hc_packet_t));
+    snipped_packet->data = digest;
+    snipped_packet->size = ceil((double)lengthBits / 8);
+    return snipped_packet;
+}
+
+long long int packet_to_int(hc_packet_t* packet) {
+    // Take null terminated char* and convert to long long int
+    long long int result = 0;
+    for (int i = 0; i < packet->size; i++) {
+        result = result << 8;
+        result += packet->data[i];
+    }
+    return result;
 }
