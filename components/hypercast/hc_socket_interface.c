@@ -9,39 +9,102 @@
 #include "esp_log.h"
 #include "lwip/sockets.h"
 #include "lwip/err.h"
+#include "esp_netif.h"
+#include <lwip/netdb.h>
 
+#include "hypercast.h"
 #include "hc_buffer.h"
 #include "hc_engine.h"
 #include "hc_socket_interface.h"
 
-// This setup doesn't belong here, but is fine until we implement send
-hc_buffer_t hc_buffer;
+#define MULTICAST_IPV4_ADDR "224.228.19.78"
+#define MC_PORT 9472
+
 
 void hc_socket_interface_send_handler(void *pvParameters) {
-    // unimplemented.
+    hypercast_t *hypercast = (hypercast_t *)pvParameters;
+
+    int sock = hypercast->socket;
+
+    // Now some constants that should really be config
+    // char* mc_addr = "224.228.19.78";
+    // int mc_port = 9472;
+
+    // Then some re-usables
+    hc_packet_t *packet;
+
+    // PROBABLY NOT QUITE WORKING
     while (1) {
-        vTaskDelay(10000);
+        // First read the buffer for data to send
+        packet = NULL; // clean up
+        // Now read
+        packet = hc_pop_buffer(hypercast->sendBuffer);
+        // If no data, pause then try again
+        if (packet == NULL) { vTaskDelay(500 / portTICK_PERIOD_MS); continue; }
+
+        // Now it's time to send!
+        // struct sockaddr_in to;
+        // to.sin_family = AF_INET;
+        // to.sin_port = htons(mc_port);
+        // to.sin_addr.s_addr = inet_addr(mc_addr);
+        
+        struct sockaddr_in sdestv4 = {
+            .sin_family = PF_INET,
+            .sin_port = htons(MC_PORT),
+        };
+        // We know this inet_aton will pass because we did it above already
+        inet_aton(MULTICAST_IPV4_ADDR, &sdestv4.sin_addr.s_addr);
+
+        // First setup the target addr
+        struct addrinfo hints = {
+            .ai_flags = AI_PASSIVE,
+            .ai_socktype = SOCK_DGRAM,
+            .ai_family = AF_INET
+        };
+        struct addrinfo *faddr;
+        char addrbuf[32] = { 0 };
+
+        getaddrinfo(MULTICAST_IPV4_ADDR,
+                    NULL,
+                    &hints,
+                    &faddr);
+
+        ((struct sockaddr_in *)faddr->ai_addr)->sin_port = htons(MC_PORT);
+        inet_ntoa_r(((struct sockaddr_in *)faddr->ai_addr)->sin_addr, addrbuf, sizeof(addrbuf)-1);
+        ESP_LOGI(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, MC_PORT);
+
+
+        int res = sendto(sock, packet->data, packet->size, 0, faddr->ai_addr, faddr->ai_addrlen);
+        if (res < 0) {
+            ESP_LOGE(TAG, "Error sending data: %d", res);
+            continue;
+        }
+        ESP_LOGI(TAG, "Sent %d bytes to %s", res, "SOME ADDRESS");
     }
 }
 
 void hc_socket_interface_recv_handler(void *pvParameters) {
-    int sock = *((int *)pvParameters);
+    hypercast_t *hypercast = (hypercast_t *)pvParameters;
 
-    ESP_LOGI(TAG, "check %p", &hc_buffer);
-    hc_allocate_buffer(&hc_buffer, 100); // HC_BUFFER_SIZE should come from hc config at some point
+    int sock = hypercast->socket;
 
+    // Before we start receiving, let's lookup the local ip too
+    // That way we can make sure not to receive any self casts :)
+    esp_netif_t *netif = NULL;
+    esp_netif_ip_info_t ipInfo; 
+    
+    netif = esp_netif_next(netif);
+    esp_netif_get_ip_info(netif, &ipInfo);
 
-    // Before starting socket receive, let's spawn the SEPARATE task
-    // responsable for handling input from this buffer!
-    xTaskCreate(hc_engine_handler, "HYPERCAST Engine", 4096, &hc_buffer, 5, NULL);
+    char localIpStr[32];
+    int localIPLen = 32;
+
+    // convert to str for str comp
+    esp_ip4addr_ntoa(&ipInfo.ip, localIpStr, localIPLen);
 
     // Now start the receive event loop
     while (1) {
         ESP_LOGI(TAG, "Waiting for data...");
-        // Receive data
-        // Sample SPT Message: \x33\x00\x41\x00\x15\x67\xb2\x03\x02\xff\x01\xd2\x83\x06\xc0\xa8\x02\x64\xc1\x97\x08\xff\x41\xfd\xa7\x06\xe0\xe4\x13\x4e\x25\x00\xb9\x00\x00\x01\x18\x00\x00\x00\x21\x00\x00\x00\x21\x00\x00\x00\x01\x00\x00\x01\x7c\xd9\xac\x12\xde\x00\x00\x00\x01\x00\x00\x00\x21\x87\x27\x10
-        // Sample Overlay Message: \xd0\x31\x00\x00\x00\x00\x15\x00\xfe\x02\x04\x00\x00\x01\x52\x00\x00\x01\x52\x03\x01\x0b\x48\x65\x6c\x6c\x6f\x20\x57\x6f\x72\x6c\x64\x00\x01\x04\x00\x00\x01\x52
-        // Send them with echo -n -e "HEX HERE" | nc -u 192.168.2.69 9472
 
         char recvbuf[1024];
         char raddr_name[32] = { 0 };
@@ -58,9 +121,16 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
             inet_ntoa_r(((struct sockaddr_in *)&raddr)->sin_addr,
                         raddr_name, sizeof(raddr_name)-1);
         }
+        // Before acknowledging the packet, check that it's from a valid address
+        // This means that the address exists and differs from our own
+        if (strcmp(raddr_name, localIpStr) == 0) {
+            ESP_LOGI(TAG, "Received packet from self, ignoring");
+            continue;
+        }
         ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
         // Then push the recvbuf into the hypercast buffer
-        hc_push_buffer(&hc_buffer, recvbuf, len);
-        ESP_LOGI(TAG, "length %d", hc_buffer.current_size);
+        hc_push_buffer(hypercast->receiveBuffer, recvbuf, len);
+        hc_push_buffer(hypercast->sendBuffer, recvbuf, len);
+        ESP_LOGI(TAG, "length %d", hypercast->receiveBuffer->current_size);
     }
 }

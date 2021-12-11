@@ -1,11 +1,12 @@
 
 #include "esp_log.h"
 #include <inttypes.h>
+#include <string.h>
 
 #include "hc_buffer.h"
 #include "spt.h"
 
-void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messageLength) {
+void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messageLength, hypercast_t* hypercast) {
     ESP_LOGI(TAG, "Reached SPT Parser");
     // Here we'll check the message type and build the appropriate message
     // Then it will be up to the function passed to at the end of each switch statement to handle that message
@@ -73,9 +74,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
                 beaconMessage->adjacencyTable->entries[i]->quality = packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex+i*40+32));
             }
             // Then send it to the handler that acts based on the message information
-            // try just always sending it back?
             
-
             break;
         case SPT_GOODBYE_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Goodbye Message");
@@ -90,4 +89,30 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             ESP_LOGE(TAG, "Received Unknown SPT Message Type");
             break;
     }
+}
+
+hc_packet_t* spt_package(void *msg, int messageType, int messageLength, hypercast_t *hypercast) {
+    char data[HC_BUFFER_DATA_MAX]; // Temporary buffer of max size to shove data into
+    int dataSize = 0;
+    // we gotta bundle it up in here
+    // unimplemented.
+
+
+    // Now at the end let's pretty it up!
+    hc_packet_t *packet = malloc(sizeof(hc_packet_t));
+    packet->size = dataSize;
+    packet->data = malloc(sizeof(char)*dataSize);
+    memcpy(packet->data, data, dataSize);
+    return packet;
+}
+
+protocol_spt* spt_protocol_from_config() {
+    protocol_spt* spt;
+    spt = malloc(sizeof(protocol_spt));
+    spt->dog = 4;
+    return spt;
+}
+
+void spt_maintenance(hypercast_t* hypercast) {
+
 }

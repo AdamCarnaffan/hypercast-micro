@@ -16,7 +16,6 @@ hc_packet_t* hc_pop_buffer(hc_buffer_t *buffer) {
     if (buffer->current_size == 0) {
         return NULL;
     }
-    // ESP_LOGI(TAG, "data getting popped!");
     hc_packet_t *data = buffer->data[buffer->front];
     // Now that we've extracted the first entry, tidy the buffer
     buffer->data[buffer->front] = NULL;

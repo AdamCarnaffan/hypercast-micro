@@ -4,7 +4,8 @@
 #define HC_OVERLAY_PACKET_LENGTH 14
 #define HC_PROTOCOL_PACKET_LENGTH 35
 
-void hc_engine_handler(void *pvParameters);
+void hc_engine_handler(hypercast_t *hypercast);
+void hc_forward(hc_packet_t*, hypercast_t*);
 
 #endif
 

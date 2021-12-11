@@ -8,25 +8,33 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "hypercast.h"
 #include "hc_buffer.h"
 #include "hc_engine.h"
 #include "hc_protocols.h"
 
-void hc_engine_handler(void *pvParameters) {
-
+void hc_engine_handler(hypercast_t *hypercast) {
     // pvParameters in this case is access to our buffer
-    hc_buffer_t* buffer = (hc_buffer_t *)pvParameters;
+    hc_buffer_t* buffer = hypercast->receiveBuffer;
+
+    ESP_LOGI(TAG, "buffer addr: %p", buffer);
 
     // Now init and prep for engine
     hc_packet_t *packet;
     ESP_LOGI(TAG, "Buffer Processor Ready");
     while (1) {
+        // SEND DISCOVERY
+        // First we'll send out our protocol discovery packet if necessary
+        // This is where we check the protocol and discovery timings
+        // Then use the func to add a protocol discovery packet to the send buffer
+        hc_protocol_maintenance(hypercast);
+
+        // READ BUFFER
         // Clear packet saved
         packet = NULL;
         // Check if anything exists in buffer
-        packet = hc_pop_buffer(buffer);
+        packet = hc_pop_buffer(hypercast->receiveBuffer);
         // If we have NO packet, stop here
-        // ESP_LOGI(TAG, "IN HERE length %d", buffer.current_size);
         if (packet == NULL) { vTaskDelay(500 / portTICK_PERIOD_MS); continue; }
         // Now we know we have a packet!
         // Parse time :)
@@ -44,10 +52,15 @@ void hc_engine_handler(void *pvParameters) {
         if (protocolId == HC_PROTOCOL_OVERLAY_MESSAGE) {
             // Send to forwarding engine
             ESP_LOGI(TAG, "Sending to forwarding engine");
+            hc_forward(packet, hypercast);
         } else {
             // Send to protocol parser
             ESP_LOGI(TAG, "Sending to protocol parser");
-            hc_protocol_parse(packet, protocolId);
+            hc_protocol_parse(packet, protocolId, hypercast);
         }
     }
+}
+
+void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
+
 }

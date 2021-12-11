@@ -20,6 +20,10 @@
         "type_traits": "c",
         "tuple": "c",
         "utility": "c",
-        "hc_protocols.h": "c"
+        "hc_protocols.h": "c",
+        "hc_socket_interface.h": "c",
+        "sockets.h": "c",
+        "*.ipp": "c",
+        "typeinfo": "c"
     }
 }

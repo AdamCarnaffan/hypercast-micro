@@ -1,6 +1,8 @@
 #ifndef __HC_ENGINE_H__
 #define __HC_ENGINE_H__
 
+#include "hypercast.h"
+
 #define SPT_BEACON_MESSAGE_TYPE 0
 #define SPT_BEACON_MESSAGE_BASE_LENGTH 60
 #define SPT_GOODBYE_MESSAGE_TYPE 1
@@ -45,7 +47,21 @@ typedef struct spt_msg_beacon {
     uint16_t reliability;
 } spt_msg_beacon_t;
 
-void spt_parse(hc_packet_t*, int, long, long);
+typedef struct protocol_spt {
+    int id;
+    int dog;
+    // Tree info table
+    // neighborhood table
+    // backup ancestor table
+    // adjacency table
+    // core table
+} protocol_spt;
+
+void spt_parse(hc_packet_t*, int, long, long, hypercast_t*);
+hc_packet_t* spt_package(void* msg, int, int, hypercast_t*);
+void spt_maintenance(hypercast_t*);
+
+protocol_spt* spt_protocol_from_config();
 
 #endif
 

@@ -5,7 +5,11 @@
 // Then supported protocolIDs
 #define HC_PROTOCOL_SPT 3 
 
-void hc_protocol_parse(hc_packet_t *, long);
+#include "hypercast.h"
+
+void hc_protocol_parse(hc_packet_t*, long, hypercast_t*);
+void hc_protocol_maintenance(hypercast_t*);
+void* resolve_protocol_to_install(int);
 
 #endif
 

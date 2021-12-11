@@ -17,7 +17,7 @@
 
 // My includes
 #include "network_station_main.h"
-#include "hc_socket_interface.h"
+#include "hypercast.h"
 
 // KEY WORD: SOCKET
 // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html
@@ -64,12 +64,13 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         // This is where we can init HyperCast!!
-        xTaskCreate(hc_socket_init, "hc_socket_init", 4096, NULL, 5, NULL);
+        xTaskCreate(hc_socket_init, "hc_socket_init", 4096, &event->ip_info.ip, 5, NULL);
         return;
     }
 }
 
-static void hc_socket_init() {
+static void hc_socket_init(void* pvParameters) {
+    // esp_ip4_addr_t* delegated_ip = (esp_ip4_addr_t*)pvParameters;
     // Start by creating a socket
     int err;
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -129,7 +130,7 @@ static void hc_socket_init() {
     }
 
     // We'll also need to set the multicast interface to listen for multicast packets
-    uint8_t loopback_if = 1;
+    uint8_t loopback_if = 0;
     err = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopback_if, sizeof(loopback_if));
     if (err < 0) {
         ESP_LOGE(TAG, "Error setting socket option LOOPBACK: %d", err);
@@ -173,11 +174,11 @@ static void hc_socket_init() {
     // Init some kind of engine here with send and receive buffers?
 
     // Now we finish socket init by starting the hypercast engine!
-    // xTaskCreate(hc_engine_handler, "HYPERCAST_engine_handler", 4096, (void *)&sock, 5, NULL);
+    xTaskCreate(hc_init, "HYPERCAST_engine_handler", 4096, (void *)&sock, 5, NULL);
 
     // We finish socket init by deploying our hypercast functionalities
-    xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, (void *)&sock, 5, NULL);
-    xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, (void *)&sock, 5, NULL);
+    // xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, (void *)&sock, 5, NULL);
+    // xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, (void *)&sock, 5, NULL);
     while (1) { vTaskDelay(10000 / portTICK_PERIOD_MS); } // I don't know how to deal with this 
     // Start listening
     // while (1) {
