@@ -9,13 +9,32 @@ typedef struct hc_config {
     int number; // This is a placeholder
 } hc_config_t;
 
+typedef struct hc_ipv4_addr {
+    uint8_t addr[4];
+} hc_ipv4_addr_t;
+
+typedef struct hc_sender_entry {
+    uint16_t type;
+    uint16_t hash;
+    uint8_t addressLength; // This may include both address and port length?
+    hc_ipv4_addr_t* address; // address_length - 2 bytes to port (IPV4 specific probably)
+    uint16_t port;
+} hc_sender_entry_t;
+
+typedef struct hc_sender_table {
+    int size;
+    hc_sender_entry_t **entries;
+    int sourceAddressLogical;
+} hc_sender_table_t;
+
 // Define our state machine
 typedef struct hypercast {
     // Add 2 buffers for send and receive
     hc_buffer_t *receiveBuffer;
     hc_buffer_t *sendBuffer;
-    // Add the socket
+    // Add the Conection Info
     int socket; // Really just a file pointer, but a *special* file pointer
+    hc_sender_table_t *senderTable;
     // Introduce statefulness
     int state;
     // Then cofiguration

@@ -33,7 +33,6 @@ void hc_socket_interface_send_handler(void *pvParameters) {
     // Then some re-usables
     hc_packet_t *packet;
 
-    // PROBABLY NOT QUITE WORKING
     while (1) {
         // First read the buffer for data to send
         packet = NULL; // clean up
@@ -130,7 +129,7 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
         ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
         // Then push the recvbuf into the hypercast buffer
         hc_push_buffer(hypercast->receiveBuffer, recvbuf, len);
-        hc_push_buffer(hypercast->sendBuffer, recvbuf, len);
+        // hc_push_buffer(hypercast->sendBuffer, recvbuf, len);
         ESP_LOGI(TAG, "length %d", hypercast->receiveBuffer->current_size);
     }
 }

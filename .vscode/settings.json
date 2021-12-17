@@ -24,6 +24,7 @@
         "hc_socket_interface.h": "c",
         "sockets.h": "c",
         "*.ipp": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "initializer_list": "c"
     }
 }

@@ -97,3 +97,39 @@ long long int packet_to_int(hc_packet_t* packet) {
     }
     return result;
 }
+
+int write_bytes(char* dataString, long long writeData, int lengthBits, int offsetBits, int dataArraySize) {
+    // First check that we're writing to a reasonable place in the byte string
+    if (lengthBits % 4 != 0 || offsetBits % 4 != 0) {
+        ESP_LOGE(TAG, "Invalid data write parameters");
+        return -1;
+    }
+    // Now we'll also check that we're in bounds of the byte string
+    if (dataArraySize < (lengthBits / 8) + (offsetBits / 8)) {
+        ESP_LOGE(TAG, "Data write array not large enough to write to");
+        return -1;
+    }
+    // Then it's time to begin!
+    int bitsToWrite = lengthBits;
+    int currentBit = offsetBits;
+    while (bitsToWrite > 0) {
+        // We'll always index dataString with
+        // dataString[currentBit / 8]
+        // And the data to write will always be shifted by the bits to write
+        // writeData = writeData >> bitsToWrite;
+        // Check if we're targeting the second half
+        if (currentBit % 8 == 0) {
+            // Writing first half
+            dataString[currentBit / 8] = (dataString[currentBit / 8] & 0x0F) | (((writeData >> (bitsToWrite - 4)) & 0xF) << 4);
+        } else {
+            // Writing second half
+            dataString[currentBit / 8] = (dataString[currentBit / 8] & 0xF0) | ((writeData >> (bitsToWrite - 4)) & 0xF);
+        }
+        // Now tick
+        bitsToWrite -= 4;
+        currentBit += 4;
+    }
+
+
+    return (currentBit/8) + 1; // Returns the 1-index in the data array of the last byte written
+}

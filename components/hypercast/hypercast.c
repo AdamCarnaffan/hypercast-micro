@@ -41,6 +41,24 @@ void hc_init(void *pvParameters) {
 
 void hc_install_config(hypercast_t *hypercast) {
     ESP_LOGI(TAG, "Installing Config...");
+    
+    // Before looking at protocol, let's use the interface to setup the senderTable
+    hypercast->senderTable = malloc(sizeof(hc_sender_table_t));
+    hypercast->senderTable->size = 1;
+    hypercast->senderTable->sourceAddressLogical = 0;
+    // Setup the table
+    hypercast->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*hypercast->senderTable->size);
+    // Setup the first entry
+    hypercast->senderTable->entries[0] = malloc(sizeof(hc_sender_entry_t));
+    hypercast->senderTable->entries[0]->type = 1;
+    hypercast->senderTable->entries[0]->hash = 64935;
+    hypercast->senderTable->entries[0]->addressLength = 6;
+    hypercast->senderTable->entries[0]->address = malloc(sizeof(hc_ipv4_addr_t));
+    hypercast->senderTable->entries[0]->address->addr[0] = 224;
+    hypercast->senderTable->entries[0]->address->addr[1] = 228;
+    hypercast->senderTable->entries[0]->address->addr[2] = 19;
+    hypercast->senderTable->entries[0]->address->addr[3] = 78;
+    hypercast->senderTable->entries[0]->port = 9472;
 
     // Usually we'd read config here, but for now just set the default values
     hypercast->protocol = resolve_protocol_to_install(HC_PROTOCOL_SPT); // usually config would feed in here instead
