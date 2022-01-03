@@ -40,6 +40,8 @@ typedef struct hypercast {
     // Then cofiguration
     void *protocol; // protocol is actually an allocated object of a type based on config (always castable to protocol shell)
     hc_config_t config;
+    // Also install the callback!
+    void (*callback)(char *, int); // data, length
 } hypercast_t;
 
 typedef struct hc_protocol_shell {

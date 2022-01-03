@@ -65,3 +65,38 @@ void hc_install_config(hypercast_t *hypercast) {
     ESP_LOGI(TAG, "Protocol: %d", (int)((hc_protocol_shell_t*)(hypercast->protocol))->id);
     return;
 }
+
+// HASHES USE A GENERAL HASH FUNCTION AND HERE'S HOW THAT SHAKES DOWN FOR THE OVERLAY
+//  public int setOverlayHash() {
+//         Vector hashPropertyVec = getListOfPropertyNames(this.propertyDoc, HyperCastConfig.OVERLAYHASH_PROPERTY_NAME);
+//         String s = "";
+
+//         for (int i = 0; i < hashPropertyVec.size(); i++) {
+//             String value = getStringProperty((String) hashPropertyVec.elementAt(i));
+
+//             if (value != null) {
+//                 if (s.equals("")) {
+//                     s = s + (String) hashPropertyVec.elementAt(i) + "=" + value;
+//                 } else {
+//                     s = s + "&" + (String) hashPropertyVec.elementAt(i) + "=" + value;
+//                 }
+//             }
+//         }
+//         return hash(s.getBytes());
+//     }
+
+//     /**
+//      * Generates a hash of a byte array for the setOverlayHash function. I could
+//      * just use Java's hashCode for a string object, but I wanted something that
+//      * would be available to any other implementation language.
+//      */
+//     public static int hash(byte[] array) {
+//         int h = 0;
+//         for (int i = 0; i < array.length; i++) {
+//             byte upperByte = (byte) ((h >>> 24) & 0xFF);
+//             int leftShiftValue = ((upperByte ^ array[i]) & 0x07) + 1;
+//             h = ((h << leftShiftValue) ^ ((upperByte ^ array[i]) & 0xFF));
+//         }
+
+//         return h;
+//     }

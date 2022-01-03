@@ -14,9 +14,10 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
     // Then it will be up to the function passed to at the end of each switch statement to handle that message
     // This all comes directly from page 27 of SPT spec -> https://www.comm.utoronto.ca/hypercast/material/SPT_Protocol_03-20-05.pdf 
     // SPT doc page 6 has information on algorithms used to calculate costing (there are options)
-    // Sender data package is updated as seen on page 82 of v4 spec -> https://www.comm.utoronto.ca/~jorg/archive/papers/Majidthesis.pdf
+    // Sender data packet is updated as seen on page 82 of v4 spec -> https://www.comm.utoronto.ca/~jorg/archive/papers/Majidthesis.pdf
     int i; // We'll need an iterator a few times
     int startingIndex; // We'll also need an index to begin an iterator at a few times
+    long senderCount; // Used to count up the senders in a senderTable (used in hello and goodbye)
     // Metric for adjacency should be least hops with at least a minimum link quality
     // Maybe use RSSI? But code is meant not to be specific to wireless (and RSSI may not be standardized?)
     ESP_LOGI(TAG, "Message Type: %d", messageType);
@@ -32,7 +33,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             // Start by resolving the sender table
             beaconMessage->senderTable = malloc(sizeof(hc_sender_table_t));
             // In normal SPT, this has to be 1
-            long senderCount = 1;
+            senderCount = 1;
             beaconMessage->senderTable->size = senderCount;
             beaconMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*) * senderCount);
             startingIndex = 16 + bitOffset;
@@ -61,7 +62,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
                 beaconMessage->senderTable->entries[i]->port = packet_to_int(packet_snip_to_bytes(packet, 16, startingIndex + 24 + (addressLength-2)*8));
                 startingIndex += 3*8 + addressLength*8; // We update this index because each interface is dynamically sized
             }
-            // Finish the sentertable by adding the source logical as well
+            // Finish the sendertable by adding the source logical as well
             beaconMessage->senderTable->sourceAddressLogical = packet_to_int(packet_snip_to_bytes(packet, 32, startingIndex));
             // HERE WE RE-GROUND THE BITOFFSET!!!!
             bitOffset = startingIndex + 32;
@@ -92,6 +93,48 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             break;
         case SPT_GOODBYE_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Goodbye Message");
+            // Now parse all the components of this message
+            spt_msg_beacon_t *goodbyeMessage = malloc(sizeof(spt_msg_beacon_t));
+            // This one's pretty easy because we actually only have the sender table to parse lol
+            // NOTE: We've already read the first 5 bytes (common to all protocol messages)
+            // These 5 are AFTER the 2 bytes read for message length
+            // Start by resolving the sender table
+            goodbyeMessage->senderTable = malloc(sizeof(hc_sender_table_t));
+            // In normal SPT, this has to be 1
+            senderCount = 1;
+            goodbyeMessage->senderTable->size = senderCount;
+            goodbyeMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*) * senderCount);
+            startingIndex = 16 + bitOffset;
+            for (i=0; i<senderCount; i++) {
+                // Theoretically this loops in CSA, but normal SPT only sees 1 iteration
+                // for each entry, we'll allocate then populate
+                goodbyeMessage->senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
+                // Now add the type of the address as IPv4 (assumed)
+                goodbyeMessage->senderTable->entries[i]->type = 1;
+                // Then add packet data
+                goodbyeMessage->senderTable->entries[i]->hash = packet_to_int(packet_snip_to_bytes(packet, 16, startingIndex));
+                long addressLength = packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex + 16));
+                // Now add the address
+                goodbyeMessage->senderTable->entries[i]->address = malloc(sizeof(hc_ipv4_addr_t));
+                goodbyeMessage->senderTable->entries[i]->addressLength = addressLength;
+                // The first 4 (address length needs to be 6 or I panic) are the address bits
+                if (addressLength != 6) {
+                    ESP_LOGE(TAG, "Address length is not 6, but %d. I can't deal with that", (int)addressLength);
+                    return;
+                }
+                // Populate address
+                for (int j=0; j<addressLength-2; j++) {
+                    goodbyeMessage->senderTable->entries[i]->address->addr[j] = (uint8_t)packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex + 24 + (j*8)));
+                }
+                // Then the last 2 bytes are the port
+                goodbyeMessage->senderTable->entries[i]->port = packet_to_int(packet_snip_to_bytes(packet, 16, startingIndex + 24 + (addressLength-2)*8));
+                startingIndex += 3*8 + addressLength*8; // We update this index because each interface is dynamically sized
+            }
+            // Finish the sendertable by adding the source logical as well
+            goodbyeMessage->senderTable->sourceAddressLogical = packet_to_int(packet_snip_to_bytes(packet, 32, startingIndex));
+            // And now we're done
+            // Then send it to the handler that acts based on the message information
+            
             break;
         case SPT_ROUTE_REQ_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Route Request Message");
@@ -106,7 +149,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
     // NOTE: may want to consider a return here instead of calling hypercast to act?
 }
 
-hc_packet_t* spt_package(void *msg, int messageType, hypercast_t *hypercast) {
+hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
     // Fetch Protocol Data
     protocol_spt *spt = (protocol_spt*)hypercast->protocol;
     // Define data cache
@@ -127,7 +170,7 @@ hc_packet_t* spt_package(void *msg, int messageType, hypercast_t *hypercast) {
             write_bytes(data, SPT_BEACON_MESSAGE_TYPE, 8, bitOffset, HC_BUFFER_DATA_MAX); // Message Type
             write_bytes(data, 1462324117, 32, bitOffset + 8, HC_BUFFER_DATA_MAX); // Overlay Hash ID <<HELP>> (Derivable?)
             spt_msg_beacon_t *message = (spt_msg_beacon_t*)msg;
-            // Now we'll read through the message and add it to the data package
+            // Now we'll read through the message and add it to the packet
             // First the sender table
             // Not sure at all where the number of interfaces goes... <<HELP>> (16 bits??)
             // BAD: To make this work, insert ff41 into the data buffer before the first interface
@@ -270,8 +313,8 @@ void spt_maintenance(hypercast_t* hypercast) {
         beaconMessage->adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
         beaconMessage->adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
     }
-    // 3. Package it up
-    hc_packet_t *packet = spt_package(beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
+    // 3. Encode it
+    hc_packet_t *packet = spt_encode(beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
     // 4. Send it off
     hc_push_buffer(hypercast->sendBuffer, packet->data, packet->size);
     // 5. Update last beacon time

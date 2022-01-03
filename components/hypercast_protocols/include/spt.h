@@ -33,6 +33,9 @@ typedef struct spt_msg_beacon {
     uint16_t reliability;
 } spt_msg_beacon_t;
 
+typedef struct spt_msg_goodbye {
+    hc_sender_table_t* senderTable;
+} spt_msg_goodbye_t;
 
 
 typedef struct pt_spt_tree_info_table {
@@ -117,7 +120,7 @@ typedef struct protocol_spt {
 } protocol_spt;
 
 void spt_parse(hc_packet_t*, int, long, long, hypercast_t*);
-hc_packet_t* spt_package(void* msg, int, hypercast_t*);
+hc_packet_t* spt_encode(void* msg, int, hypercast_t*);
 void spt_maintenance(hypercast_t*);
 
 protocol_spt* spt_protocol_from_config();

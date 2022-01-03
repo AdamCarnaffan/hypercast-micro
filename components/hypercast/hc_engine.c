@@ -12,6 +12,7 @@
 #include "hc_buffer.h"
 #include "hc_engine.h"
 #include "hc_protocols.h"
+#include "hc_overlay.h"
 
 void hc_engine_handler(hypercast_t *hypercast) {
     // pvParameters in this case is access to our buffer
@@ -47,6 +48,11 @@ void hc_engine_handler(hypercast_t *hypercast) {
         }
         // Now let's first check the HC protocol ID to see if we can handle this message
         long protocolId = packet_to_int(packet_snip_to_bytes(packet, 4, 0)); // It's only the first byte
+        // TODO: We should also get the overlay hash id here and compare it to our own
+        if (1 != 1) {
+            ESP_LOGE(TAG, "Overlay hash does not match this node's hash, discarding packet");
+            continue;
+        }
         ESP_LOGI(TAG, "Protocol ID: %ld", protocolId);
         // We can only handle 13 which is an overlay message, or a protocol message
         if (protocolId == HC_PROTOCOL_OVERLAY_MESSAGE) {
@@ -62,5 +68,21 @@ void hc_engine_handler(hypercast_t *hypercast) {
 }
 
 void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
-
+    // First we'll read the packet to interpret the message & receive it
+    // We're assuming that all overlay messages are multicast, but we check datamode anyway
+    hc_msg_overlay_t *msg = hc_msg_overlay_parse(packet);
+    // Once we've read the packet, we need to send it forward!
+    // Before forwarding, tick down the hop limit and add to the last hop logical
+    msg->hopLimit = msg->hopLimit - 1;
+    msg->previousHopLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+    // Then send it out!
+    hc_packet_t *forwardPacket = hc_msg_overlay_encode(msg);
+    hc_push_buffer(hypercast->sendBuffer, forwardPacket->data, forwardPacket->size);
+    // Then we need to run our api callback on the payload :)
+    char* callbackData;
+    int callbackDataLength;
+    hc_msg_overlay_get_primary_payload(msg, &callbackData, &callbackDataLength);
+    hypercast->callback(callbackData, callbackDataLength);
+    // Then free the message data
+    hc_msg_overlay_free(msg);
 }

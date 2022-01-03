@@ -26,5 +26,6 @@
         "*.ipp": "c",
         "typeinfo": "c",
         "initializer_list": "c"
-    }
+    },
+    "idf.adapterTargetName": "esp32"
 }
