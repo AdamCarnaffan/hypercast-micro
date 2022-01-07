@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "hc_buffer.h"
+#include "hc_lib.h"
 #include "spt.h"
 
 void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messageLength, hypercast_t* hypercast) {
@@ -71,6 +72,8 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             beaconMessage->parentAddressLogical = packet_to_int(packet_snip_to_bytes(packet, 32, bitOffset + 32));
             beaconMessage->cost = packet_to_int(packet_snip_to_bytes(packet, 32, bitOffset + 64));
             beaconMessage->timestamp = packet_to_int(packet_snip_to_bytes(packet, 64, bitOffset + 96));
+            // They deal in ms out there, but we're gonna keep it to seconds over here
+            beaconMessage->timestamp /= 1000;
             ESP_LOGI(TAG, "Beacon Message Parsed, timestamp is %" PRIu64 "", beaconMessage->timestamp);
             // Now we need to parse the adjacency table
             long tableSize = packet_to_int(packet_snip_to_bytes(packet, 32, bitOffset + 160)); // "Sender Count"
@@ -83,18 +86,20 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
                 beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
                 beaconMessage->adjacencyTable->entries[i]->id = packet_to_int(packet_snip_to_bytes(packet, 32, startingIndex+i*40));
                 beaconMessage->adjacencyTable->entries[i]->quality = packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex+i*40+32));
+                // Now we need to do an & operation on "quality" because it actually only occupies bits 2-8 ( & 0x7F )
+                beaconMessage->adjacencyTable->entries[i]->quality = beaconMessage->adjacencyTable->entries[i]->quality & 0x7F;
             }
             // Then send it to the handler that acts based on the message information
             bitOffset = startingIndex + tableSize*40;
             // Reliability is last!
             beaconMessage->reliability = packet_to_int(packet_snip_to_bytes(packet, 16, bitOffset));
             // Then send it to the handler that acts based on the message information
-            
+            spt_handle_beacon_message(beaconMessage, hypercast);
             break;
         case SPT_GOODBYE_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Goodbye Message");
             // Now parse all the components of this message
-            spt_msg_beacon_t *goodbyeMessage = malloc(sizeof(spt_msg_beacon_t));
+            spt_msg_goodbye_t *goodbyeMessage = malloc(sizeof(spt_msg_goodbye_t));
             // This one's pretty easy because we actually only have the sender table to parse lol
             // NOTE: We've already read the first 5 bytes (common to all protocol messages)
             // These 5 are AFTER the 2 bytes read for message length
@@ -134,7 +139,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             goodbyeMessage->senderTable->sourceAddressLogical = packet_to_int(packet_snip_to_bytes(packet, 32, startingIndex));
             // And now we're done
             // Then send it to the handler that acts based on the message information
-            
+            spt_handle_goodbye_message(goodbyeMessage, hypercast);
             break;
         case SPT_ROUTE_REQ_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Route Request Message");
@@ -146,7 +151,6 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             ESP_LOGE(TAG, "Received Unknown SPT Message Type");
             break;
     }
-    // NOTE: may want to consider a return here instead of calling hypercast to act?
 }
 
 hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
@@ -199,13 +203,16 @@ hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
             write_bytes(data, spt->treeInfoTable->id, 32, bitOffset, HC_BUFFER_DATA_MAX); // message->rootLogicalAdddress
             write_bytes(data, message->parentAddressLogical, 32, bitOffset + 32, HC_BUFFER_DATA_MAX);
             write_bytes(data, message->cost, 32, bitOffset + 64, HC_BUFFER_DATA_MAX);
-            write_bytes(data, message->timestamp, 64, bitOffset + 96, HC_BUFFER_DATA_MAX);
+            write_bytes(data, message->timestamp*1000, 64, bitOffset + 96, HC_BUFFER_DATA_MAX); // *1000 because they use ms out there
             // Then we finish with the adjacency table
-            // We'll send a 0 sender count here
-            // For now this is ALWAYS BLANK <<HELP>>
-            write_bytes(data, 0, 32, bitOffset + 160, HC_BUFFER_DATA_MAX);
-            // TODO: ADD ADJACENCY TABLE
+            write_bytes(data, spt->adjacencyTable->size, 32, bitOffset + 160, HC_BUFFER_DATA_MAX);
             bitOffset += 160 + 32; // + adjacency table size entries of 40 bits
+            // Now we can add the actual adjacency table entries
+            for (i=0;i<spt->adjacencyTable->size;i++) {
+                write_bytes(data, spt->adjacencyTable->entries[i]->id, 32, bitOffset, HC_BUFFER_DATA_MAX);
+                write_bytes(data, spt->adjacencyTable->entries[i]->quality, 8, bitOffset + 32, HC_BUFFER_DATA_MAX);
+                bitOffset += 40; // Size of an adjacency table entry
+            }
             // And the reliability is last
             write_bytes(data, message->reliability, 16, bitOffset, HC_BUFFER_DATA_MAX);
             bitOffset += 16; // Just to maintain it to the end :)
@@ -234,7 +241,7 @@ hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
 }
 
 protocol_spt* spt_protocol_from_config() {
-    srand(time(NULL));
+    srand(time(NULL)); // TODO: Fix this not being at all random
     protocol_spt* spt;
     spt = malloc(sizeof(protocol_spt));
     spt->id = rand() % 999; // Not sure we need this
@@ -247,7 +254,7 @@ protocol_spt* spt_protocol_from_config() {
     spt->treeInfoTable = malloc(sizeof(pt_spt_tree_info_table_t));
     spt->treeInfoTable->id = spt->id;
     spt->treeInfoTable->physicalAddress = 0;
-    spt->treeInfoTable->coreId = 0;
+    spt->treeInfoTable->rootId = 0;
     spt->treeInfoTable->ancestorId = 0;
     spt->treeInfoTable->cost = 0;
     spt->treeInfoTable->pathMetric = 0;
@@ -255,6 +262,7 @@ protocol_spt* spt_protocol_from_config() {
 
     // NEIGHBORHOOD
     spt->neighborhoodTable = malloc(sizeof(pt_spt_neighborhood_table_t));
+    spt->neighborhoodTable->entries = malloc(sizeof(pt_spt_neighborhood_entry_t*)*SPT_TABLE_NEIGHBORHOOD_MAX_SIZE);
     spt->neighborhoodTable->size = 0;
 
     // BACKUP ANCESTORS
@@ -281,7 +289,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     // do it when necessary
 
     // Load necessary values
-    unsigned currentTime = (unsigned)time(NULL);
+    uint64_t currentTime = get_epoch();
     protocol_spt* spt = (protocol_spt*)hypercast->protocol;
 
     // First check necessity of maintenance
@@ -299,10 +307,10 @@ void spt_maintenance(hypercast_t* hypercast) {
     beaconMessage->senderTable = hypercast->senderTable;
     // Misc data
     beaconMessage->rootAddressLogical = spt->id;
-    beaconMessage->parentAddressLogical = 0; // Would be read from the neighbors table if this were populating
-    beaconMessage->cost = 0;
+    beaconMessage->parentAddressLogical = spt->treeInfoTable->ancestorId;
+    beaconMessage->cost = spt->treeInfoTable->cost;
     beaconMessage->timestamp = currentTime; // Needs to be real epoch timestamp
-    beaconMessage->senderCount = 1; // Default for new beacon I think???
+    beaconMessage->senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
     beaconMessage->reliability = 10000; // No idea where this comes from, but mimic HC's value for now
     // Adjacency Table
     beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
@@ -319,4 +327,327 @@ void spt_maintenance(hypercast_t* hypercast) {
     hc_push_buffer(hypercast->sendBuffer, packet->data, packet->size);
     // 5. Update last beacon time
     spt->lastBeacon = currentTime;
+
+    // TODO: Implement Timeout mechanisms
+    ESP_LOGI(TAG, "SPT Maintenance Finished");
+}
+
+// Message Type Handlers (For Hypercast Updates to State)
+
+void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
+    // This section is a replication of the logic found in the SPT protocol manual
+    // at https://www.comm.utoronto.ca/hypercast/material/SPT_Protocol_03-20-05.pdf on pages 18-20
+
+    // Set up globals
+    int i;
+    protocol_spt* spt = (protocol_spt*)hypercast->protocol;
+
+    // Once we've received a message from anywhere, use it to update the local clock time
+    if (get_epoch() < HC_FIXED_TIME_MIN_VALUE + 80000) {
+        // We need to set the time to something reasonable
+        set_epoch(msg->timestamp);
+    }
+
+    // 1. Update Adjacency Table
+
+    // First find entry of table
+    pt_spt_adjacency_entry_t *adjEntry = NULL;
+    for (i=0;i<spt->adjacencyTable->size;i++) {
+        if (spt->adjacencyTable->entries[i]->id == msg->senderTable->sourceAddressLogical) {
+            adjEntry = spt->adjacencyTable->entries[i];
+            break;
+        }
+    }
+
+    // If we didn't find it, add it
+    if (adjEntry == NULL) {
+        adjEntry = malloc(sizeof(pt_spt_adjacency_entry_t));
+        adjEntry->id = msg->senderTable->sourceAddressLogical;
+        adjEntry->quality = 0;
+        adjEntry->pingBuffer = malloc(sizeof(bool)*SPT_MESSAGE_LQ_PING_BUFF_SIZE);
+        adjEntry->pingBufferStart = 0;
+        adjEntry->timestamp = get_epoch();
+        spt->adjacencyTable->entries[spt->adjacencyTable->size] = adjEntry;
+        spt->adjacencyTable->size++;
+    }
+
+    // We also need to record the ping to the ping buffer
+    spt_ping_buffer_record(get_epoch(), true, adjEntry);
+
+    // Now we'll update the quality
+    adjEntry->quality = spt_ping_buffer_get_count(adjEntry);
+
+    // 2. Adjacency & Reliability Test
+
+    // And get quality from message (then use the lower of the two)
+    adjacency_table_entry_t* adjacentMyself = NULL;
+    // First locate
+    for (i=0;i<msg->adjacencyTable->size;i++) {
+        if (msg->adjacencyTable->entries[i]->id == spt->id) {
+            adjacentMyself = msg->adjacencyTable->entries[i];
+            break;
+        }
+    }
+
+    // Then compare
+    if (adjacentMyself != NULL && adjEntry->quality > adjacentMyself->quality) {
+        adjEntry->quality = adjacentMyself->quality;
+    }
+
+    // Now check if we need to stop here (TEST)
+    if (adjEntry->quality <= SPT_MESSAGE_LQ_RELIABILITY_THRESHOLD) { 
+        ESP_LOGE(TAG, "Beacon Message failed reliability test");
+        return; 
+    }
+
+    // 3. Core Table Test & Update Core Table
+    // We're skipping this for now, I can't find core data
+
+    // 4. Determine Ancestors
+    bool updateAncestor = spt_beacon_should_be_ancestor(msg, spt);
+    if (updateAncestor) {
+        // Here we then know we need to update ancestor!
+        // Neighborhood table props will be updated later :)
+        spt->treeInfoTable->ancestorId = msg->senderTable->sourceAddressLogical;
+    }   
+
+    // 5. Update Tree & Neighborhood Tables
+    if (updateAncestor) {
+        spt->treeInfoTable->rootId = msg->rootAddressLogical;
+        spt->treeInfoTable->cost = msg->cost + 1;
+        spt->treeInfoTable->sequenceNumber = 4; // TODO: Support sequence number
+        // TODO: Add PathMetric update
+
+        // Now we remove descendant with neighborId == senderId
+        spt_remove_neighbor(spt, msg->senderTable->sourceAddressLogical);
+
+        // Then remove ancestor entry
+        for (i=0;i<spt->neighborhoodTable->size;i++) {
+            if (spt->neighborhoodTable->entries[i]->isAncestor) {
+                spt_remove_neighbor(spt, spt->neighborhoodTable->entries[i]->neighborId);
+                break;
+            }
+        }
+
+        // And add new ancestor entry with message data
+        pt_spt_neighborhood_entry_t* anc = malloc(sizeof(pt_spt_neighborhood_entry_t));
+        anc->neighborId = msg->senderTable->sourceAddressLogical;
+        anc->rootId = msg->rootAddressLogical;
+        anc->isAncestor = true;
+        anc->cost = msg->cost;
+        anc->timestamp = msg->timestamp;
+        anc->pathMetric = 0; // TODO: Fill in
+        
+        // Insert time
+        spt_add_neighbor(spt, anc);
+
+        // Done!
+    } else if (msg->senderTable->sourceAddressLogical == spt->treeInfoTable->ancestorId) {
+        if (msg->senderTable->sourceAddressLogical > spt->treeInfoTable->id) {
+            spt->treeInfoTable->rootId = spt->treeInfoTable->id;
+            spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
+            spt->treeInfoTable->cost = 0;
+            spt->treeInfoTable->pathMetric = 0; // TODO: MAXIMUM_PATH_METRIC_VALUE;
+
+            // Then remove ancestor entry
+            for (i=0;i<spt->neighborhoodTable->size;i++) {
+                if (spt->neighborhoodTable->entries[i]->isAncestor) {
+                    spt_remove_neighbor(spt, spt->neighborhoodTable->entries[i]->neighborId);
+                    break;
+                }
+            }
+            // Done!
+        } else {
+            spt->treeInfoTable->rootId = msg->rootAddressLogical;
+            spt->treeInfoTable->ancestorId = msg->senderTable->sourceAddressLogical;
+            spt->treeInfoTable->cost = msg->cost + 1;
+            spt->treeInfoTable->sequenceNumber = 4; // TODO: Support sequence number
+            spt->treeInfoTable->pathMetric = 0; // TODO: NewPathMetric
+
+            // Update ancestor entry with this message
+            for (i=0;i<spt->neighborhoodTable->size;i++) {
+                if (spt->neighborhoodTable->entries[i]->isAncestor) {
+                    spt->neighborhoodTable->entries[i]->rootId = msg->rootAddressLogical;
+                    spt->neighborhoodTable->entries[i]->cost = msg->cost + 1;
+                    spt->neighborhoodTable->entries[i]->timestamp = msg->timestamp;
+                    spt->neighborhoodTable->entries[i]->pathMetric = 0; // TODO: NewPathMetric
+                    break;
+                }
+            }
+            // Done!
+        }
+    } else if (msg->parentAddressLogical == spt->treeInfoTable->id) {
+        // We're the parent of the  sender, update neighbor table with descendant entry
+        
+        // First try to find the entry
+        pt_spt_neighborhood_entry_t* desc = NULL;
+        for (i=0;i<spt->neighborhoodTable->size;i++) {
+            if (spt->neighborhoodTable->entries[i]->neighborId == msg->senderTable->sourceAddressLogical) {
+                desc = spt->neighborhoodTable->entries[i];
+                break;
+            }
+        }
+
+        if (desc == NULL) {
+            // Add
+            desc = malloc(sizeof(pt_spt_neighborhood_entry_t));
+            desc->neighborId = msg->senderTable->sourceAddressLogical;
+            desc->rootId = msg->rootAddressLogical;
+            desc->isAncestor = false;
+            desc->cost = msg->cost;
+            desc->timestamp = msg->timestamp;
+            desc->pathMetric = 0; // TODO: NewPathMetric
+
+            spt_add_neighbor(spt, desc);
+        } else {
+            // Update
+            desc->rootId = msg->rootAddressLogical;
+            desc->cost = msg->cost;
+            desc->timestamp = msg->timestamp;
+            desc->pathMetric = 0; // TODO: NewPathMetric
+        }
+        // Done!
+    } else {
+        // Remove descendant entry if exists
+        spt_remove_neighbor(spt, msg->senderTable->sourceAddressLogical);
+        // Done!
+    }
+}
+
+void spt_handle_goodbye_message(spt_msg_goodbye_t* msg, hypercast_t* hypercast) {
+    return;
+}
+
+
+
+
+
+// PROTOCOL SUPPORT FUNCTIONS
+void spt_ping_buffer_record(uint64_t time, bool recordingPing, pt_spt_adjacency_entry_t* adjEntry) {
+    // "Recording Ping" is a boolean which indicates whether we see a ping at this time
+    // or we're just updating the buffer to check quality
+    // We'll only update timestamp to match "time" if we're recording a ping
+
+    long interval = (time - adjEntry->timestamp + SPT_MESSAGE_BEACON_TIME_INTERVAL/2) / SPT_MESSAGE_BEACON_TIME_INTERVAL;
+    int i; // iterator
+
+    // Then we check if the interval is 0
+    if (interval < 1) {
+        if (!recordingPing) { return; } // Interval 0 and not recording means time to leave!
+
+        int end = adjEntry->pingBufferStart - 1;
+        if (end < 0) { end = SPT_MESSAGE_LQ_PING_BUFF_SIZE - 1; }
+
+        for (i=0;i<SPT_MESSAGE_LQ_PING_BUFF_SIZE;i++) {
+            if (!adjEntry->pingBuffer[end]) {
+                adjEntry->pingBuffer[end] = true;
+                break;
+            } else {
+                end--;
+                if  (end < 0) { end = SPT_MESSAGE_LQ_PING_BUFF_SIZE - 1; }
+            }
+        }
+
+    } else {
+        if (recordingPing) {
+            for (i=0;i<interval;i++) {
+                if (i < interval - 1) {
+                    adjEntry->pingBuffer[adjEntry->pingBufferStart] = false;
+                } else {
+                    adjEntry->pingBuffer[adjEntry->pingBufferStart] = true;
+                }
+                // Then update start
+                adjEntry->pingBufferStart = (adjEntry->pingBufferStart + 1) % SPT_MESSAGE_LQ_PING_BUFF_SIZE;
+            }
+        } else {
+            int tempStart = adjEntry->pingBufferStart;
+            for (i=0;i<interval-1;i++) {
+                adjEntry->pingBuffer[tempStart] = false;
+                tempStart = (tempStart + 1) % SPT_MESSAGE_LQ_PING_BUFF_SIZE;
+            }
+        }
+    }
+
+    // Finally update last ping received timestamp
+    if (recordingPing) {
+        adjEntry->timestamp = time;
+    }
+}
+
+int spt_ping_buffer_get_count(pt_spt_adjacency_entry_t* adjEntry) {
+    // Before counting, inject a ping
+    spt_ping_buffer_record(get_epoch(), false, adjEntry);
+    // Then count
+    int i = adjEntry->pingBufferStart;
+    int count_ = 0;
+    for (int j=0;j<SPT_MESSAGE_LQ_PING_BUFF_SIZE;j++) {
+        if (adjEntry->pingBuffer[i]) {
+            count_++;
+        }
+        i = (i + 1) % SPT_MESSAGE_LQ_PING_BUFF_SIZE;
+    }
+    return count_;
+}
+
+bool spt_beacon_should_be_ancestor(spt_msg_beacon_t* msg, protocol_spt* spt) {
+    if (msg->parentAddressLogical == spt->treeInfoTable->ancestorId) { return true; }
+
+    // Get ancestor info from neighbor table
+    pt_spt_neighborhood_entry_t* ancestor = NULL;
+    for (int i=0;i<spt->neighborhoodTable->size;i++) {
+        if (spt->neighborhoodTable->entries[i]->neighborId == spt->treeInfoTable->ancestorId) {
+            ancestor = spt->neighborhoodTable->entries[i];
+            break;
+        }
+    }
+
+    if (msg->timestamp < spt->lastBeacon) { return false; }
+
+    if (ancestor == NULL) {
+        return spt_node_is_better_than(msg->rootAddressLogical, spt->treeInfoTable->id);
+    }
+
+    // By here we know ancestior != NULL
+    if (spt_node_is_better_than(msg->rootAddressLogical, ancestor->rootId)) {
+        return true;
+    } else if (msg->rootAddressLogical == ancestor->rootId) {
+        // Should be comparing path metrics here
+        // TODO: Implement path metrics
+        if (4 >= 3 + SPT_JUMP_THRESHOLD && msg->cost <= ancestor->cost + 2) { // 2 is hardcoded in Hypercast source
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool spt_node_is_better_than(uint32_t a, uint32_t b) {
+    return a > b;
+}
+
+void spt_remove_neighbor(protocol_spt* spt, uint32_t neighborId) {
+    // Remove neighbor from neighborhood table
+    for (int i=0;i<spt->neighborhoodTable->size;i++) {
+        if (spt->neighborhoodTable->entries[i]->neighborId == neighborId) {
+            pt_spt_neighborhood_entry_t* entry = spt->neighborhoodTable->entries[i];
+            // Move last entry to fill the gap
+            spt->neighborhoodTable->entries[i] = spt->neighborhoodTable->entries[spt->neighborhoodTable->size - 1];
+            spt->neighborhoodTable->size--;
+            free(entry);
+            break;
+        }
+    }
+}
+
+void spt_add_neighbor(protocol_spt* spt, pt_spt_neighborhood_entry_t* neighbor) {
+    // First check if there's space in the table
+    // Otherwise throw error and stop
+    if (spt->neighborhoodTable->size >= SPT_TABLE_NEIGHBORHOOD_MAX_SIZE) {
+        ESP_LOGE(TAG, "Neighborhood table is full: Neighbor add failed");
+        return;
+    }
+
+    // Then add neighbor to neighborhood table
+    spt->neighborhoodTable->entries[spt->neighborhoodTable->size] = neighbor;
+    spt->neighborhoodTable->size++;
 }

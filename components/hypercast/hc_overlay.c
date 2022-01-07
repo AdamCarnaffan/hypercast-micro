@@ -1,9 +1,9 @@
 
 #include "esp_log.h"
+#include <string.h>
 
 #include "hc_overlay.h"
 #include "hc_protocols.h"
-#include "hc_buffer.h"
 
 hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
     // Start by initializing the overlay message
@@ -32,11 +32,16 @@ hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
                 ext = malloc(sizeof(hc_msg_ext_payload_t));
                 ((hc_msg_ext_payload_t*)ext)->type = extensionType;
                 ((hc_msg_ext_payload_t*)ext)->order = extensionOrder;
+                // Now we sort out the payload
                 ((hc_msg_ext_payload_t*)ext)->length = packet_to_int(packet_snip_to_bytes(packet, 8, extensionStartIndex + 16));
                 ((hc_msg_ext_payload_t*)ext)->payload = malloc(sizeof(char) * ((hc_msg_ext_payload_t*)ext)->length);
-                memcpy(((hc_msg_ext_payload_t*)ext)->payload, packet_snip_to_bytes(packet, 8, extensionStartIndex + 24), ((hc_msg_ext_payload_t*)ext)->length);
+                // We've done prep, time to extract and copy the payload over
+                hc_packet_t* payloadPacket = packet_snip_to_bytes(packet, 8*((hc_msg_ext_payload_t*)ext)->length, extensionStartIndex + 24);
+                memcpy(((hc_msg_ext_payload_t*)ext)->payload, payloadPacket->data, payloadPacket->size);
+                // Then cleanup
+                free_packet(payloadPacket);
                 // Now we need to track extensionLength so the next one starts in the right place
-                extensionLength = ((hc_msg_ext_payload_t*)ext)->length;
+                extensionLength = ((hc_msg_ext_payload_t*)ext)->length*8 + 8; // +8 for the length of the payload
                 break;
             case HC_MSG_EXT_ROUTE_RECORD_TYPE:
                 // This type includes the standard plus a route record and logical address
@@ -74,16 +79,16 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
     char data[HC_BUFFER_DATA_MAX]; // Temporary buffer of max size to shove data into
     int dataSize = 0;
     // Then let's start by encoding the version
-    dataSize += write_bytes(data, HC_PROTOCOL_OVERLAY_MESSAGE, 4, 0, HC_BUFFER_DATA_MAX);
-    dataSize += write_bytes(data, 0, 4, 4, HC_BUFFER_DATA_MAX);
-    dataSize += write_bytes(data, msg->version, 4, 8, HC_BUFFER_DATA_MAX);
-    dataSize += write_bytes(data, msg->dataMode, 4, 12, HC_BUFFER_DATA_MAX);
+    write_bytes(data, HC_PROTOCOL_OVERLAY_MESSAGE, 4, 0, HC_BUFFER_DATA_MAX);
+    write_bytes(data, 0, 4, 4, HC_BUFFER_DATA_MAX);
+    write_bytes(data, msg->version, 4, 8, HC_BUFFER_DATA_MAX);
+    write_bytes(data, msg->dataMode, 4, 12, HC_BUFFER_DATA_MAX);
     // Here we leave a space from 16 to 32 for a count of the extensions' bytes put together
-    dataSize += write_bytes(data, msg->hopLimit, 16, 32, HC_BUFFER_DATA_MAX);
+    write_bytes(data, msg->hopLimit, 16, 32, HC_BUFFER_DATA_MAX);
     // Then we leave a space from 48 to 56 for the first extension's type
-    dataSize += write_bytes(data, 4, 8, 56, HC_BUFFER_DATA_MAX); // This is the length of logical addresses in bytes (hardcoded to 4)
-    dataSize += write_bytes(data, msg->sourceLogicalAddress, 32, 64, HC_BUFFER_DATA_MAX);
-    dataSize += write_bytes(data, msg->previousHopLogicalAddress, 32, 96, HC_BUFFER_DATA_MAX);
+    write_bytes(data, 4, 8, 56, HC_BUFFER_DATA_MAX); // This is the length of logical addresses in bytes (hardcoded to 4)
+    write_bytes(data, msg->sourceLogicalAddress, 32, 64, HC_BUFFER_DATA_MAX);
+    write_bytes(data, msg->previousHopLogicalAddress, 32, 96, HC_BUFFER_DATA_MAX);
     
     int extensionStartIndex = 128;
 
@@ -93,6 +98,11 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
     int i;
     bool extensionFoundOnIter;
     void** extensionsOrdered = malloc(sizeof(void*)*HC_OVERLAY_MAX_EXTENSIONS);
+    // Before we load extensions in, set null on all
+    for (i = 0; i < HC_OVERLAY_MAX_EXTENSIONS; i++) {
+        extensionsOrdered[i] = NULL;
+    }
+
     while (1) { // Just iterate until the break condition
         // Find extension in msg->extensions with order = extensionsFound + 1
         extensionFoundOnIter = false;
@@ -106,6 +116,9 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         }
         if (!extensionFoundOnIter) { break; }
     }
+
+    // Track data size before extensions
+    dataSize = extensionStartIndex;
 
     int extensionsLength = 0;
     int thisExtensionLength;
@@ -126,21 +139,22 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         thisExtensionLength = 0;
         // First we'll encode the extension standards
         // We encode the NEXT extension's type (or 0 if there is no next extension)
-        dataSize += write_bytes(data, nextExtensionType, 8, extensionStartIndex, HC_BUFFER_DATA_MAX);
+        write_bytes(data, nextExtensionType, 8, extensionStartIndex, HC_BUFFER_DATA_MAX);
         // Then it's the extension length size (which is 1)
-        dataSize += write_bytes(data, 1, 8, extensionStartIndex + 8, HC_BUFFER_DATA_MAX);
+        write_bytes(data, 1, 8, extensionStartIndex + 8, HC_BUFFER_DATA_MAX);
         // Then the extension length itself (set determined by case)
         thisExtensionLength = 3;
         // Then these are specific to the extension type
         switch (ext->type) {
             case HC_MSG_EXT_PAYLOAD_TYPE:
-                dataSize += write_bytes(data, ((hc_msg_ext_payload_t*)ext)->length, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX); // extension length
-                dataSize += write_bytes(data, ((hc_msg_ext_payload_t*)ext)->payload, ((hc_msg_ext_payload_t*)ext)->length*8, extensionStartIndex + 24, HC_BUFFER_DATA_MAX);
+                write_bytes(data, ((hc_msg_ext_payload_t*)ext)->length, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX); // extension length
+                write_chars_to_bytes(data, ((hc_msg_ext_payload_t*)ext)->payload, ((hc_msg_ext_payload_t*)ext)->length*8, 
+                                                        extensionStartIndex + 24, HC_BUFFER_DATA_MAX);
                 thisExtensionLength += ((hc_msg_ext_payload_t*)ext)->length;
                 break;
             case HC_MSG_EXT_ROUTE_RECORD_TYPE:
-                dataSize += write_bytes(data, 4, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX); // extension length
-                dataSize += write_bytes(data, ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddress, 32, extensionStartIndex + 24, HC_BUFFER_DATA_MAX); 
+                write_bytes(data, 4, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX); // extension length
+                write_bytes(data, ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddress, 32, extensionStartIndex + 24, HC_BUFFER_DATA_MAX); 
                 // TODO: Impelment route record
                 thisExtensionLength += 4;
                 break;
@@ -154,18 +168,24 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         extensionStartIndex += thisExtensionLength*8;
     }
 
+    ESP_LOGI(TAG, "Extensions found: %d", extensionsFound);
+
+    // Now dataSize is extensionStartIndex but in bytes not bits
+    dataSize = extensionStartIndex / 8;
+
     // Then we finish by throwing the first extension type to the beginning
-    dataSize += write_bytes(data, ((hc_msg_ext_t*)extensionsOrdered[0])->type, 8, 48, HC_BUFFER_DATA_MAX);
+    write_bytes(data, ((hc_msg_ext_t*)extensionsOrdered[0])->type, 8, 48, HC_BUFFER_DATA_MAX);
     // Now we're done with the ordered extensions array, free it
-    free(extensionsOrdered);
+    // free(extensionsOrdered);
 
     // And we add the length of the extensions put together
-    dataSize += write_bytes(data, extensionsLength, 16, 16, HC_BUFFER_DATA_MAX);
+    write_bytes(data, extensionsLength, 16, 16, HC_BUFFER_DATA_MAX);
     // Now at the end let's pretty it up!
     hc_packet_t *packet = malloc(sizeof(hc_packet_t));
     packet->size = dataSize;
     packet->data = malloc(sizeof(char)*dataSize);
     memcpy(packet->data, data, dataSize);
+    ESP_LOGI(TAG, "WOOF");
     return packet;
 }
 

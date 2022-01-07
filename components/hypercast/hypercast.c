@@ -35,7 +35,6 @@ void hc_init(void *pvParameters) {
     ESP_LOGI(TAG, "Handlers Started");
 
     // Start the engine
-    ESP_LOGI(TAG, "Buffer Processor Ready");
     hc_engine_handler(hypercast); // This runs the for loop on this thread forever :)
 }
 
@@ -63,8 +62,17 @@ void hc_install_config(hypercast_t *hypercast) {
     // Usually we'd read config here, but for now just set the default values
     hypercast->protocol = resolve_protocol_to_install(HC_PROTOCOL_SPT); // usually config would feed in here instead
     ESP_LOGI(TAG, "Protocol: %d", (int)((hc_protocol_shell_t*)(hypercast->protocol))->id);
+
+    // Finish by installing a callback
+    hypercast->callback = hc_callback_handler;
     return;
 }
+
+void hc_callback_handler(char* data, int length) {
+    ESP_LOGI(TAG, "Callback Handled for %.*s", length, data);
+    return;
+}
+
 
 // HASHES USE A GENERAL HASH FUNCTION AND HERE'S HOW THAT SHAKES DOWN FOR THE OVERLAY
 //  public int setOverlayHash() {

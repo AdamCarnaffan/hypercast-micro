@@ -1,6 +1,8 @@
 #ifndef __HC_OVERLAY_H__
 #define __HC_OVERLAY_H__
 
+#include "hc_buffer.h"
+
 #define HC_OVERLAY_MAX_EXTENSIONS 10
 
 // Overlay Extension Types

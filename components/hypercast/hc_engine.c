@@ -15,15 +15,11 @@
 #include "hc_overlay.h"
 
 void hc_engine_handler(hypercast_t *hypercast) {
-    // pvParameters in this case is access to our buffer
-    hc_buffer_t* buffer = hypercast->receiveBuffer;
-
-    ESP_LOGI(TAG, "buffer addr: %p", buffer);
-
     // Now init and prep for engine
-    hc_packet_t *packet;
+    hc_packet_t *packet = NULL;
     ESP_LOGI(TAG, "Buffer Processor Ready");
     while (1) {
+        ESP_LOGI(TAG, "Buffer Processor Running");
         // SEND DISCOVERY
         // First we'll send out our protocol discovery packet if necessary
         // This is where we check the protocol and discovery timings
@@ -32,7 +28,11 @@ void hc_engine_handler(hypercast_t *hypercast) {
 
         // READ BUFFER
         // Clear packet saved
-        packet = NULL;
+        if (packet != NULL) {
+            free(packet);
+            packet = NULL;
+        }
+
         // Check if anything exists in buffer
         packet = hc_pop_buffer(hypercast->receiveBuffer);
         // If we have NO packet, stop here

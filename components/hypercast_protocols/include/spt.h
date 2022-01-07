@@ -12,6 +12,22 @@
 #define SPT_ROUTE_REPLY_MESSAGE_TYPE 3
 #define SPT_ROUTE_REPLY_MESSAGE_BASE_LENGTH 0
 
+// Table Max Sizes
+#define SPT_TABLE_NEIGHBORHOOD_MAX_SIZE 10
+
+// Configs
+#define SPT_MESSAGE_LQ_RELIABILITY_THRESHOLD 0.1
+#define SPT_MESSAGE_LQ_PING_BUFF_SIZE 10
+#define SPT_JUMP_THRESHOLD 1
+#define SPT_ADJACENCY_TIMEOUT 20000
+#define SPT_MESSAGE_BEACON_TIME_INTERVAL 1000
+
+// Defaults that I recorded from config but don't understand yet
+#define SPT_TOPOLOGY_POLICY 0 // "Cost"
+#define SPT_NEIGHBOR_TIMEOUT 5000
+#define SPT_MESSAGE_MAX_AGE 5000
+#define SPT_ROOT_HISTORY_TIMEOUT 20000
+
 typedef struct adjacency_table_entry {
     uint32_t id;
     uint8_t quality;
@@ -41,7 +57,7 @@ typedef struct spt_msg_goodbye {
 typedef struct pt_spt_tree_info_table {
     uint16_t id;
     uint32_t physicalAddress;
-    uint16_t coreId;
+    uint16_t rootId;
     uint32_t ancestorId;
     uint32_t cost;
     uint32_t pathMetric; // This should probably be an enum?
@@ -51,11 +67,11 @@ typedef struct pt_spt_tree_info_table {
 typedef struct pt_spt_neighborhood_entry {
     uint16_t neighborId;
     uint32_t physicalAddress;
-    uint16_t coreId;
+    uint16_t rootId;
     uint32_t cost;
     uint32_t pathMetric;
     uint64_t timestamp;
-    bool isAncestor;
+    bool isAncestor; // This is the single entry that is our ancestor
 } pt_spt_neighborhood_entry_t;
 
 typedef struct pt_spt_neighborhood_table {
@@ -82,6 +98,9 @@ typedef struct pt_spt_adjacency_entry {
     int id;
     uint32_t quality;
     uint64_t timestamp;
+    // Ping buffer tracks the reception (true or false) of pings over the last SPT_MESSAGE_LQ_PING_BUFF_SIZE intervals
+    bool* pingBuffer;
+    int pingBufferStart;
 } pt_spt_adjacency_entry_t;
 
 typedef struct pt_spt_adjacency_table {
@@ -124,6 +143,19 @@ hc_packet_t* spt_encode(void* msg, int, hypercast_t*);
 void spt_maintenance(hypercast_t*);
 
 protocol_spt* spt_protocol_from_config();
+
+// Protocol Message Handlers
+void spt_handle_beacon_message(spt_msg_beacon_t*, hypercast_t*);
+void spt_handle_goodbye_message(spt_msg_goodbye_t*, hypercast_t*);
+
+// Protocol Support Functions
+void spt_ping_buffer_record(uint64_t, bool, pt_spt_adjacency_entry_t*);
+int spt_ping_buffer_get_count(pt_spt_adjacency_entry_t*);
+bool spt_beacon_should_be_ancestor(spt_msg_beacon_t*, protocol_spt*);
+bool spt_node_is_better_than(uint32_t, uint32_t);
+void spt_remove_neighbor(protocol_spt*, uint32_t);
+void spt_add_neighbor(protocol_spt*, pt_spt_neighborhood_entry_t*);
+
 
 #endif
 

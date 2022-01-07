@@ -21,6 +21,7 @@ typedef struct hc_buffer {
 void hc_allocate_buffer(hc_buffer_t *buffer, int length);
 hc_packet_t* hc_pop_buffer(hc_buffer_t *buffer);
 void hc_push_buffer(hc_buffer_t *buffer, char *data, int packet_length);
+void free_packet(hc_packet_t* packet);
 
 // Manage bytes IN
 hc_packet_t* packet_snip_to_bytes(hc_packet_t*, int, int);
@@ -28,6 +29,7 @@ long long int packet_to_int(hc_packet_t*);
 
 // Manage bytes OUT
 int write_bytes(char*, long long d, int, int, int);
+int write_chars_to_bytes(char*, char*, int, int, int);
 
 #endif
 

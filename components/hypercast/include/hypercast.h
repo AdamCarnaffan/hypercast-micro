@@ -53,6 +53,9 @@ typedef struct hc_protocol_shell {
 void hc_init(void*);
 void hc_install_config(hypercast_t*);
 
+// callback
+void hc_callback_handler(char*, int);
+
 #endif
 
 #ifndef TAG
