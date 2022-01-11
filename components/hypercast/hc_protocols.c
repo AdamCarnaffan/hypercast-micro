@@ -45,10 +45,10 @@ void hc_protocol_maintenance(hypercast_t *hypercast) {
     }
 }
 
-void* resolve_protocol_to_install(int config) { // config type should be more interesting
+void* resolve_protocol_to_install(int config, uint32_t sourceLogicalAddress) { // config type should be more interesting
     // This function will return some void * cast of an allocated protocol object
     // it would also be a switch, but here we're just returning a pre-built spt obj
-    void* protocol = (void*)spt_protocol_from_config();
+    void* protocol = (void*)spt_protocol_from_config(sourceLogicalAddress);
     ((hc_protocol_shell_t*)protocol)->id = HC_PROTOCOL_SPT;
     return protocol;
 }

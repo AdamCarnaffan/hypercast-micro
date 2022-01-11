@@ -74,6 +74,9 @@ void hc_socket_interface_send_handler(void *pvParameters) {
 
 
         int res = sendto(sock, packet->data, packet->size, 0, faddr->ai_addr, faddr->ai_addrlen);
+        // Now that we've sent the packet, we can free it
+        free_packet(packet);
+
         if (res < 0) {
             ESP_LOGE(TAG, "Error sending data: %d", res);
             continue;
@@ -129,7 +132,6 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
         ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
         // Then push the recvbuf into the hypercast buffer
         hc_push_buffer(hypercast->receiveBuffer, recvbuf, len);
-        // hc_push_buffer(hypercast->sendBuffer, recvbuf, len);
         ESP_LOGI(TAG, "length %d", hypercast->receiveBuffer->current_size);
     }
 }

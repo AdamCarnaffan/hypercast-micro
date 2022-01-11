@@ -40,11 +40,12 @@ void hc_init(void *pvParameters) {
 
 void hc_install_config(hypercast_t *hypercast) {
     ESP_LOGI(TAG, "Installing Config...");
+    srand(time(NULL)); // TODO: Fix this not being at all random
     
     // Before looking at protocol, let's use the interface to setup the senderTable
     hypercast->senderTable = malloc(sizeof(hc_sender_table_t));
     hypercast->senderTable->size = 1;
-    hypercast->senderTable->sourceAddressLogical = 0;
+    hypercast->senderTable->sourceAddressLogical = rand() % 999;
     // Setup the table
     hypercast->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*hypercast->senderTable->size);
     // Setup the first entry
@@ -60,7 +61,7 @@ void hc_install_config(hypercast_t *hypercast) {
     hypercast->senderTable->entries[0]->port = 9472;
 
     // Usually we'd read config here, but for now just set the default values
-    hypercast->protocol = resolve_protocol_to_install(HC_PROTOCOL_SPT); // usually config would feed in here instead
+    hypercast->protocol = resolve_protocol_to_install(HC_PROTOCOL_SPT, hypercast->senderTable->sourceAddressLogical); // usually config would feed in here instead
     ESP_LOGI(TAG, "Protocol: %d", (int)((hc_protocol_shell_t*)(hypercast->protocol))->id);
 
     // Finish by installing a callback

@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "hc_protocols.h"
 #include "hc_buffer.h"
 #include "hc_lib.h"
 #include "spt.h"
+#include "hc_overlay.h"
 
 void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messageLength, hypercast_t* hypercast) {
     ESP_LOGI(TAG, "Reached SPT Parser");
@@ -95,6 +97,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             beaconMessage->reliability = packet_to_int(packet_snip_to_bytes(packet, 16, bitOffset));
             // Then send it to the handler that acts based on the message information
             spt_handle_beacon_message(beaconMessage, hypercast);
+            spt_free_beacon_message(beaconMessage);
             break;
         case SPT_GOODBYE_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Goodbye Message");
@@ -140,6 +143,7 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             // And now we're done
             // Then send it to the handler that acts based on the message information
             spt_handle_goodbye_message(goodbyeMessage, hypercast);
+            spt_free_goodbye_message(goodbyeMessage);
             break;
         case SPT_ROUTE_REQ_MESSAGE_TYPE:
             ESP_LOGI(TAG, "Received Route Request Message");
@@ -240,11 +244,10 @@ hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
     return packet;
 }
 
-protocol_spt* spt_protocol_from_config() {
-    srand(time(NULL)); // TODO: Fix this not being at all random
+protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
     protocol_spt* spt;
     spt = malloc(sizeof(protocol_spt));
-    spt->id = rand() % 999; // Not sure we need this
+    spt->id = HC_PROTOCOL_SPT; // Not sure we need this
     spt->lastBeacon = 0; // Never sent, so diff will be massive!
     spt->heartbeatTime = 3;
 
@@ -252,8 +255,8 @@ protocol_spt* spt_protocol_from_config() {
 
     // TREE INFO
     spt->treeInfoTable = malloc(sizeof(pt_spt_tree_info_table_t));
-    spt->treeInfoTable->id = spt->id;
-    spt->treeInfoTable->physicalAddress = 0;
+    spt->treeInfoTable->id = sourceLogicalAddress;
+    spt->treeInfoTable->physicalAddress = sourceLogicalAddress;
     spt->treeInfoTable->rootId = 0;
     spt->treeInfoTable->ancestorId = 0;
     spt->treeInfoTable->cost = 0;
@@ -304,7 +307,18 @@ void spt_maintenance(hypercast_t* hypercast) {
     spt_msg_beacon_t *beaconMessage = malloc(sizeof(spt_msg_beacon_t));
     // 2. Populate state information
     // Sender table with 1 entry (because we only use 1 interface)
-    beaconMessage->senderTable = hypercast->senderTable;
+    // We need to copy it here so that the beacon free can free it later!
+    beaconMessage->senderTable = malloc(sizeof(hc_sender_table_t));
+    beaconMessage->senderTable->size = hypercast->senderTable->size;
+    beaconMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage->senderTable->size);
+    for (int i=0;i<beaconMessage->senderTable->size;i++) {
+        beaconMessage->senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
+        beaconMessage->senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
+        beaconMessage->senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
+        beaconMessage->senderTable->entries[i]->address = hypercast->senderTable->entries[i]->address;
+        beaconMessage->senderTable->entries[i]->port = hypercast->senderTable->entries[i]->port;
+    }
+    beaconMessage->senderTable->sourceAddressLogical = hypercast->senderTable->sourceAddressLogical;
     // Misc data
     beaconMessage->rootAddressLogical = spt->id;
     beaconMessage->parentAddressLogical = spt->treeInfoTable->ancestorId;
@@ -327,8 +341,42 @@ void spt_maintenance(hypercast_t* hypercast) {
     hc_push_buffer(hypercast->sendBuffer, packet->data, packet->size);
     // 5. Update last beacon time
     spt->lastBeacon = currentTime;
+    // 6. Free memory
+    // spt_free_beacon_message(beaconMessage);
 
     // TODO: Implement Timeout mechanisms
+
+    // TEMP: Whenever we finish maintenance, send an overlay message out!
+    hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init();
+    overlayMessage->version = 3;
+    overlayMessage->dataMode = 1;
+    overlayMessage->hopLimit = 224;
+    overlayMessage->sourceLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+    ESP_LOGI(TAG, "HC SEDER previous hop address: %d", hypercast->senderTable->sourceAddressLogical);
+    overlayMessage->previousHopLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+    ESP_LOGI(TAG, "HC SEDER  previous hop address: %d", hypercast->senderTable->sourceAddressLogical);
+    
+    // Add payload
+    overlayMessage->extensions[0] = malloc(sizeof(hc_msg_ext_payload_t));
+    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->type = HC_MSG_EXT_PAYLOAD_TYPE;
+    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->order = 1;
+    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->length = 11;
+    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->payload = "Hello World";
+    // Add route record
+    overlayMessage->extensions[1] = malloc(sizeof(hc_msg_ext_route_record_t));
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->type = HC_MSG_EXT_ROUTE_RECORD_TYPE;
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->order = 2;
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecord = 1;
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+
+    // Then encode it
+    hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
+    // Then send it off
+    hc_push_buffer(hypercast->sendBuffer, packet2->data, packet2->size);
+    // Then free memory
+    // hc_msg_overlay_free(overlayMessage);
+    // free(packet); // data will be freed later
+
     ESP_LOGI(TAG, "SPT Maintenance Finished");
 }
 
@@ -383,7 +431,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     adjacency_table_entry_t* adjacentMyself = NULL;
     // First locate
     for (i=0;i<msg->adjacencyTable->size;i++) {
-        if (msg->adjacencyTable->entries[i]->id == spt->id) {
+        if (msg->adjacencyTable->entries[i]->id == spt->treeInfoTable->id) {
             adjacentMyself = msg->adjacencyTable->entries[i];
             break;
         }
@@ -650,4 +698,31 @@ void spt_add_neighbor(protocol_spt* spt, pt_spt_neighborhood_entry_t* neighbor) 
     // Then add neighbor to neighborhood table
     spt->neighborhoodTable->entries[spt->neighborhoodTable->size] = neighbor;
     spt->neighborhoodTable->size++;
+}
+
+
+// Functions for freeing message memory
+void spt_free_beacon_message(spt_msg_beacon_t* msg) {
+    // Free the adjacency table
+    for (int i=0;i<msg->adjacencyTable->size;i++) {
+        free(msg->adjacencyTable->entries[i]);
+    }
+    free(msg->adjacencyTable);
+    // Free sender table
+    for (int i=0;i<msg->senderTable->size;i++) {
+        free(msg->senderTable->entries[i]);
+    }
+    free(msg->senderTable);
+    // Now finish by freeing the message itself
+    free(msg);
+}
+
+void spt_free_goodbye_message(spt_msg_goodbye_t* msg) {
+    // Free sender table
+    for (int i=0;i<msg->senderTable->size;i++) {
+        free(msg->senderTable->entries[i]);
+    }
+    free(msg->senderTable);
+    // Now finish by freeing the message itself
+    free(msg);
 }

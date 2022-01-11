@@ -83,14 +83,17 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
     write_bytes(data, 0, 4, 4, HC_BUFFER_DATA_MAX);
     write_bytes(data, msg->version, 4, 8, HC_BUFFER_DATA_MAX);
     write_bytes(data, msg->dataMode, 4, 12, HC_BUFFER_DATA_MAX);
-    // Here we leave a space from 16 to 32 for a count of the extensions' bytes put together
-    write_bytes(data, msg->hopLimit, 16, 32, HC_BUFFER_DATA_MAX);
-    // Then we leave a space from 48 to 56 for the first extension's type
-    write_bytes(data, 4, 8, 56, HC_BUFFER_DATA_MAX); // This is the length of logical addresses in bytes (hardcoded to 4)
-    write_bytes(data, msg->sourceLogicalAddress, 32, 64, HC_BUFFER_DATA_MAX);
-    write_bytes(data, msg->previousHopLogicalAddress, 32, 96, HC_BUFFER_DATA_MAX);
+    // Now we insert 0 from 16 to 40 (3 bytes). No idea why tho
+    write_bytes(data, 0, 24, 16, HC_BUFFER_DATA_MAX);
+    // Here we leave a space from 40 to 56 for a count of the extensions' bytes put together
+    write_bytes(data, msg->hopLimit, 16, 56, HC_BUFFER_DATA_MAX);
+    // Then we leave a space from 72 to 80 for the first extension's type
+    write_bytes(data, 4, 8, 80, HC_BUFFER_DATA_MAX); // This is the length of logical addresses in bytes (hardcoded to 4)
+    write_bytes(data, msg->sourceLogicalAddress, 32, 88, HC_BUFFER_DATA_MAX);
+    ESP_LOGI(TAG, "Source previous hop address: %d", msg->previousHopLogicalAddress);
+    write_bytes(data, msg->previousHopLogicalAddress, 32, 120, HC_BUFFER_DATA_MAX);
     
-    int extensionStartIndex = 128;
+    int extensionStartIndex = 152;
 
     // Now we start writing the extensions out
     // First we're doing extension discovery
@@ -174,18 +177,23 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
     dataSize = extensionStartIndex / 8;
 
     // Then we finish by throwing the first extension type to the beginning
-    write_bytes(data, ((hc_msg_ext_t*)extensionsOrdered[0])->type, 8, 48, HC_BUFFER_DATA_MAX);
+    if (extensionsFound > 0) {
+        write_bytes(data, ((hc_msg_ext_t*)extensionsOrdered[0])->type, 8, 72, HC_BUFFER_DATA_MAX);
+    } else {
+        write_bytes(data, 0, 8, 72, HC_BUFFER_DATA_MAX);
+    }
     // Now we're done with the ordered extensions array, free it
     // free(extensionsOrdered);
 
     // And we add the length of the extensions put together
-    write_bytes(data, extensionsLength, 16, 16, HC_BUFFER_DATA_MAX);
+    write_bytes(data, extensionsLength, 16, 40, HC_BUFFER_DATA_MAX);
     // Now at the end let's pretty it up!
     hc_packet_t *packet = malloc(sizeof(hc_packet_t));
     packet->size = dataSize;
     packet->data = malloc(sizeof(char)*dataSize);
     memcpy(packet->data, data, dataSize);
-    ESP_LOGI(TAG, "WOOF");
+    // Then we can free the original data (because its been copied)
+    // free(data);
     return packet;
 }
 
@@ -205,6 +213,15 @@ void hc_msg_overlay_free(hc_msg_overlay_t* msg) {
     // First free allocated extensions
     for (int i=0;i<HC_OVERLAY_MAX_EXTENSIONS;i++) {
         if (msg->extensions[i] != NULL) {
+            // First check (based on type) if we need to free sub-components
+            switch (((hc_msg_ext_t*)msg->extensions[i])->type) {
+                case HC_MSG_EXT_PAYLOAD_TYPE:
+                    free(((hc_msg_ext_payload_t*)msg->extensions[i])->payload);
+                    break;
+                default:
+                    // Some extensions will have nothing to free
+                    break;
+            }
             free(msg->extensions[i]);
         }
     }

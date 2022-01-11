@@ -9,7 +9,7 @@
 
 void hc_protocol_parse(hc_packet_t*, long, hypercast_t*);
 void hc_protocol_maintenance(hypercast_t*);
-void* resolve_protocol_to_install(int);
+void* resolve_protocol_to_install(int, uint32_t);
 
 #endif
 

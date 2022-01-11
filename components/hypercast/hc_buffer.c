@@ -89,6 +89,10 @@ hc_packet_t* packet_snip_to_bytes(hc_packet_t *packet, int lengthBits, int offse
 }
 
 long long int packet_to_int(hc_packet_t* packet) {
+    if (packet == NULL) {
+        // ESP_LOGE(TAG, "Packet is NULL");
+        return -1;
+    }
     // Take null terminated char* and convert to long long int
     long long int result = 0;
     for (int i = 0; i < packet->size; i++) {
@@ -151,7 +155,7 @@ int write_chars_to_bytes(char* dataString, char* writeData, int lengthBits, int 
     while (bitsToWrite > 0) {
         // Because we're writing charts here, we can simply use bytes,
         // and each char is 1 byte in, 1 byte out, plain and simple :)
-        dataString[currentBit / 8] = writeData[bitsToWrite - lengthBits];
+        dataString[currentBit / 8] = writeData[(lengthBits - bitsToWrite) / 8];
         // Now tick
         bitsToWrite -= 8;
         currentBit += 8;

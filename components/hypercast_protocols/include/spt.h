@@ -142,7 +142,7 @@ void spt_parse(hc_packet_t*, int, long, long, hypercast_t*);
 hc_packet_t* spt_encode(void* msg, int, hypercast_t*);
 void spt_maintenance(hypercast_t*);
 
-protocol_spt* spt_protocol_from_config();
+protocol_spt* spt_protocol_from_config(uint32_t);
 
 // Protocol Message Handlers
 void spt_handle_beacon_message(spt_msg_beacon_t*, hypercast_t*);
@@ -156,6 +156,9 @@ bool spt_node_is_better_than(uint32_t, uint32_t);
 void spt_remove_neighbor(protocol_spt*, uint32_t);
 void spt_add_neighbor(protocol_spt*, pt_spt_neighborhood_entry_t*);
 
+// Protocol Message Free Functions
+void spt_free_beacon_message(spt_msg_beacon_t*);
+void spt_free_goodbye_message(spt_msg_goodbye_t*);
 
 #endif
 
