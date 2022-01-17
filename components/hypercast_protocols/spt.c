@@ -176,7 +176,7 @@ hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
         case SPT_BEACON_MESSAGE_TYPE:
             // First the basics (kinda obvious)
             write_bytes(data, SPT_BEACON_MESSAGE_TYPE, 8, bitOffset, HC_BUFFER_DATA_MAX); // Message Type
-            write_bytes(data, 1462324117, 32, bitOffset + 8, HC_BUFFER_DATA_MAX); // Overlay Hash ID <<HELP>> (Derivable?)
+            write_bytes(data, spt->overlayId, 32, bitOffset + 8, HC_BUFFER_DATA_MAX); // Overlay Hash ID <<HELP>> (Derivable?)
             spt_msg_beacon_t *message = (spt_msg_beacon_t*)msg;
             // Now we'll read through the message and add it to the packet
             // First the sender table
@@ -366,9 +366,9 @@ void spt_maintenance(hypercast_t* hypercast) {
     overlayMessage->extensions[1] = malloc(sizeof(hc_msg_ext_route_record_t));
     ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->type = HC_MSG_EXT_ROUTE_RECORD_TYPE;
     ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->order = 2;
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecord = 1;
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddress = hypercast->senderTable->sourceAddressLogical;
-
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordSize = 1;
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddressList = malloc(sizeof(uint32_t)*HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH);
+    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddressList[0] = hypercast->senderTable->sourceAddressLogical;
     // Then encode it
     hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
     // Then send it off

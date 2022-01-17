@@ -48,8 +48,13 @@ hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
                 ext = malloc(sizeof(hc_msg_ext_route_record_t));
                 ((hc_msg_ext_route_record_t*)ext)->type = extensionType;
                 ((hc_msg_ext_route_record_t*)ext)->order = extensionOrder;
-                ((hc_msg_ext_route_record_t*)ext)->routeRecord = 0; // TODO: Implement
-                ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddress = packet_to_int(packet_snip_to_bytes(packet, 32, extensionStartIndex + 24));
+                // Now get the size of the route record and each entry
+                // Note that the size of the route record is /4 because each entry is 4 bytes
+                ((hc_msg_ext_route_record_t*)ext)->routeRecordSize = packet_to_int(packet_snip_to_bytes(packet, 8, extensionStartIndex + 16)) / 4;
+                // Now iterate from extensionStartIndex + 24 to get each entry (32 long)
+                for (int i=0; i<((hc_msg_ext_route_record_t*)ext)->routeRecordSize; i++) {
+                    ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddressList[i] = packet_to_int(packet_snip_to_bytes(packet, 32, extensionStartIndex + 24 + (i*32)));
+                }
                 break;
             default:
                 ESP_LOGE(TAG, "Unknown extension type: %d", extensionType);
@@ -156,10 +161,13 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
                 thisExtensionLength += ((hc_msg_ext_payload_t*)ext)->length;
                 break;
             case HC_MSG_EXT_ROUTE_RECORD_TYPE:
-                write_bytes(data, 4, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX); // extension length
-                write_bytes(data, ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddress, 32, extensionStartIndex + 24, HC_BUFFER_DATA_MAX); 
-                // TODO: Impelment route record
-                thisExtensionLength += 4;
+                // Size is really easy, it's 4*the size of the route record (4 bytes per address)
+                write_bytes(data, ((hc_msg_ext_route_record_t*)ext)->routeRecordSize*4, 8, extensionStartIndex + 16, HC_BUFFER_DATA_MAX);
+                // Now we'll encode the route record logical addresses iteratively
+                for (int j=0;j<((hc_msg_ext_route_record_t*)ext)->routeRecordSize;j++) {
+                    write_bytes(data, ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddressList[j], 32, extensionStartIndex + 24 + j*32, HC_BUFFER_DATA_MAX);
+                }
+                thisExtensionLength += ((hc_msg_ext_route_record_t*)ext)->routeRecordSize*4;
                 break;
             default:
                 ESP_LOGE(TAG, "Unknown extension type: %d", ext->type);

@@ -1,4 +1,3 @@
-// TODO: Return these to reading from the sdkconfig file configurations
 #define NETWORK_WIFI_SSID       "Gargoyle"
 #define NETWORK_WIFI_PASSWORD   "password"
 #define NETWORK_MAX_RETRY       5

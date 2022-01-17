@@ -4,6 +4,7 @@
 #include "hc_buffer.h"
 
 #define HC_OVERLAY_MAX_EXTENSIONS 10
+#define HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH 256
 
 // Overlay Extension Types
 #define HC_OVERLAY_EXT_TYPE_NULL 0
@@ -40,8 +41,8 @@ typedef struct hc_msg_ext_route_record {
     uint8_t type;
     uint8_t order;
     // Then we have the extension data
-    int routeRecord; // TODO: This may be a table or something, but I'm not sure at this point
-    uint32_t routeRecordLogicalAddress;
+    int routeRecordSize;
+    uint32_t* routeRecordLogicalAddressList;
 } hc_msg_ext_route_record_t;
 
 

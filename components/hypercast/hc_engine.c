@@ -48,11 +48,6 @@ void hc_engine_handler(hypercast_t *hypercast) {
         }
         // Now let's first check the HC protocol ID to see if we can handle this message
         long protocolId = packet_to_int(packet_snip_to_bytes(packet, 4, 0)); // It's only the first byte
-        // TODO: We should also get the overlay hash id here and compare it to our own
-        if (1 != 1) {
-            ESP_LOGE(TAG, "Overlay hash does not match this node's hash, discarding packet");
-            continue;
-        }
         ESP_LOGI(TAG, "Protocol ID: %ld", protocolId);
         // We can only handle 13 which is an overlay message, or a protocol message
         if (protocolId == HC_PROTOCOL_OVERLAY_MESSAGE) {

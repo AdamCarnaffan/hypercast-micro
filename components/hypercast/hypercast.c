@@ -40,12 +40,17 @@ void hc_init(void *pvParameters) {
 
 void hc_install_config(hypercast_t *hypercast) {
     ESP_LOGI(TAG, "Installing Config...");
-    srand(time(NULL)); // TODO: Fix this not being at all random
-    
+
+    // Now let's generate a source logical address for the node
+    uint32_t sourceLogicalGenerated = 0;
+    while (sourceLogicalGenerated == 0) {
+        sourceLogicalGenerated = esp_random() % 999;
+    }
+
     // Before looking at protocol, let's use the interface to setup the senderTable
     hypercast->senderTable = malloc(sizeof(hc_sender_table_t));
     hypercast->senderTable->size = 1;
-    hypercast->senderTable->sourceAddressLogical = rand() % 999;
+    hypercast->senderTable->sourceAddressLogical = sourceLogicalGenerated;
     // Setup the table
     hypercast->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*hypercast->senderTable->size);
     // Setup the first entry

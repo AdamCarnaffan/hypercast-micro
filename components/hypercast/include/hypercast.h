@@ -46,6 +46,7 @@ typedef struct hypercast {
 
 typedef struct hc_protocol_shell {
     int id;
+    int overlayId; // The overlay hash which determines if they live in the same space for real
     // actual protocols have other data that follows
 } hc_protocol_shell_t;
 

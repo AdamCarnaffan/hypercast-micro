@@ -4,7 +4,7 @@
 #define HC_FIXED_TIME_MIN_VALUE (uint64_t)1640000000
 
 uint64_t get_epoch();
-void set_epoch(uint64_t);
+int set_epoch(uint64_t);
 
 
 #endif

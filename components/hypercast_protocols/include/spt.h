@@ -122,6 +122,7 @@ typedef struct pt_spt_core_table {
 
 typedef struct protocol_spt {
     int id;
+    int overlayId;
     uint64_t lastBeacon; // timestamp of last beacon
     // Tree info table
     pt_spt_tree_info_table_t* treeInfoTable;
