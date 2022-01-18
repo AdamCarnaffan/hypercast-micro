@@ -299,6 +299,9 @@ void spt_maintenance(hypercast_t* hypercast) {
     if (currentTime - spt->lastBeacon < spt->heartbeatTime) {
         return;
     }
+    
+    // Setup iterator
+    int i;
 
     // Now execute
     ESP_LOGI(TAG, "Time to Maintain SPT");
@@ -330,7 +333,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
     beaconMessage->adjacencyTable->size = spt->adjacencyTable->size;
     beaconMessage->adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
-    for (int i=0; i<spt->adjacencyTable->size; i++) {
+    for (i=0; i<spt->adjacencyTable->size; i++) {
         beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
         beaconMessage->adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
         beaconMessage->adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
@@ -344,7 +347,52 @@ void spt_maintenance(hypercast_t* hypercast) {
     // 6. Free memory
     // spt_free_beacon_message(beaconMessage);
 
-    // TODO: Implement Timeout mechanisms
+    // First we'll timeout the adjacency entries
+    if (spt->adjacencyTable->size > 0) {
+        for (i=0; i<spt->adjacencyTable->size; i++) {
+            if (spt->adjacencyTable->entries[i]->timestamp + SPT_ADJACENCY_TIMEOUT < currentTime) {
+                // Then we have a node that has timed out
+                // We'll remove it from the adjacency table
+                // And we'll set i back by one because we've moved table entries to fill this index again
+                pt_spt_adjacency_entry_t *entry = spt->adjacencyTable->entries[i];
+                for (int j=i; j<spt->adjacencyTable->size; j++) {
+                    spt->adjacencyTable->entries[j] = spt->adjacencyTable->entries[j+1];
+                }
+                spt->adjacencyTable->size--;
+                ESP_LOGI(TAG, "Timeout Mechanism has detected that a node left the network");
+                // Now we'll free the entry
+                free(entry);
+                i--;
+            }
+        }
+    }
+
+    // Now we'll timeout the neighborhood entries
+    if (spt->neighborhoodTable->size > 0) {
+        for (i=0; i<spt->neighborhoodTable->size; i++) {
+            if (spt->neighborhoodTable->entries[i]->timestamp + SPT_NEIGHBOR_TIMEOUT < currentTime) {
+                // Then we have a node that has timed out
+                // We'll remove it from the neighborhood table
+                // And we'll set i back by one because we've moved table entries to fill this index again
+                pt_spt_neighborhood_entry_t *entry = spt->neighborhoodTable->entries[i];
+                for (int j=i; j<spt->neighborhoodTable->size; j++) {
+                    spt->neighborhoodTable->entries[j] = spt->neighborhoodTable->entries[j+1];
+                }
+                spt->neighborhoodTable->size--;
+                // We have to do a bit more work if this was an ancestor entry
+                if (entry->isAncestor) {
+                    spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
+                    spt->treeInfoTable->rootId = spt->treeInfoTable->id;
+                    spt->treeInfoTable->cost = 0;
+                    // TODO: Also set PathMetric here
+                }
+                ESP_LOGI(TAG, "Timeout Mechanism has detected that a node left the neighborhood");
+                // Now we'll free the entry
+                free(entry);
+                i--;
+            }
+        }
+    }
 
     // TEMP: Whenever we finish maintenance, send an overlay message out!
     hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init();
