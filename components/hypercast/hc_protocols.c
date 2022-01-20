@@ -7,6 +7,7 @@
 
 #include "hc_buffer.h"
 #include "hc_protocols.h"
+#include "hc_measure.h"
 
 // Protocol Includes
 #include "spt.h"
@@ -49,6 +50,11 @@ void hc_protocol_maintenance(hypercast_t *hypercast) {
             ESP_LOGE(TAG, "HYPERCAST RUNNING ON UNSUPPORTED PROTOCOL");
             break;
     }
+    // Once we've maintained, we can also send a node update if enabled
+    if (SEND_MEASURES == 1) {
+        log_nodestate(hypercast);
+    }
+    return;
 }
 
 void* resolve_protocol_to_install(int config, uint32_t sourceLogicalAddress) { // config type should be more interesting

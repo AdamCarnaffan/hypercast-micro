@@ -25,7 +25,10 @@
         "sockets.h": "c",
         "*.ipp": "c",
         "typeinfo": "c",
-        "initializer_list": "c"
+        "initializer_list": "c",
+        "esp_netif.h": "c",
+        "*.inc": "c",
+        "hc_measure.h": "c"
     },
     "idf.adapterTargetName": "esp32"
 }
