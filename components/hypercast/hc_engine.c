@@ -66,6 +66,12 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
     // First we'll read the packet to interpret the message & receive it
     // We're assuming that all overlay messages are multicast, but we check datamode anyway
     hc_msg_overlay_t *msg = hc_msg_overlay_parse(packet);
+
+    if (msg == NULL) {
+        ESP_LOGE(TAG, "Failed to parse overlay message");
+        return;
+    }
+    
     // Once we've read the packet, we need to send it forward!
     // Before forwarding, tick down the hop limit and add to the last hop logical
     msg->hopLimit = msg->hopLimit - 1;

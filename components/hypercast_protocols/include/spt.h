@@ -28,6 +28,9 @@
 #define SPT_MESSAGE_MAX_AGE 5000
 #define SPT_ROOT_HISTORY_TIMEOUT 20000
 
+// Path Metrics 
+#define SPT_PATH_METRIC_FULL_VALUE 10000
+
 typedef struct adjacency_table_entry {
     uint32_t id;
     uint8_t quality;
@@ -60,7 +63,7 @@ typedef struct pt_spt_tree_info_table {
     uint16_t rootId;
     uint32_t ancestorId;
     uint32_t cost;
-    uint32_t pathMetric; // This should probably be an enum?
+    uint32_t pathMetric;
     uint32_t sequenceNumber;
 } pt_spt_tree_info_table_t;
 
@@ -160,6 +163,9 @@ void spt_add_neighbor(protocol_spt*, pt_spt_neighborhood_entry_t*);
 // Protocol Message Free Functions
 void spt_free_beacon_message(spt_msg_beacon_t*);
 void spt_free_goodbye_message(spt_msg_goodbye_t*);
+
+// Pathmetrics
+int spt_pathmetric_minimumcost(spt_msg_beacon_t*);
 
 #endif
 

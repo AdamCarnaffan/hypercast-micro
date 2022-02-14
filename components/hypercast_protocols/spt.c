@@ -260,7 +260,7 @@ protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
     spt->treeInfoTable->rootId = 0;
     spt->treeInfoTable->ancestorId = 0;
     spt->treeInfoTable->cost = 0;
-    spt->treeInfoTable->pathMetric = 0;
+    spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(NULL);
     spt->treeInfoTable->sequenceNumber = 0;
 
     // NEIGHBORHOOD
@@ -328,7 +328,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     beaconMessage->cost = spt->treeInfoTable->cost;
     beaconMessage->timestamp = currentTime; // Needs to be real epoch timestamp
     beaconMessage->senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
-    beaconMessage->reliability = 10000; // No idea where this comes from, but mimic HC's value for now
+    beaconMessage->reliability = spt_pathmetric_minimumcost(NULL);
     // Adjacency Table
     beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
     beaconMessage->adjacencyTable->size = spt->adjacencyTable->size;
@@ -381,10 +381,11 @@ void spt_maintenance(hypercast_t* hypercast) {
                 spt->neighborhoodTable->size--;
                 // We have to do a bit more work if this was an ancestor entry
                 if (entry->isAncestor) {
+                    // Do reset because we're no longer connected to our ancestor
                     spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
                     spt->treeInfoTable->rootId = spt->treeInfoTable->id;
                     spt->treeInfoTable->cost = 0;
-                    // TODO: Also set PathMetric here
+                    spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(NULL);
                 }
                 ESP_LOGI(TAG, "Timeout Mechanism has detected that a node left the neighborhood");
                 // Now we'll free the entry
@@ -512,7 +513,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
         spt->treeInfoTable->rootId = msg->rootAddressLogical;
         spt->treeInfoTable->cost = msg->cost + 1;
         spt->treeInfoTable->sequenceNumber = 4; // TODO: Support sequence number
-        // TODO: Add PathMetric update
+        spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(msg);
 
         // Now we remove descendant with neighborId == senderId
         spt_remove_neighbor(spt, msg->senderTable->sourceAddressLogical);
@@ -532,7 +533,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
         anc->isAncestor = true;
         anc->cost = msg->cost;
         anc->timestamp = msg->timestamp;
-        anc->pathMetric = 0; // TODO: Fill in
+        anc->pathMetric = spt_pathmetric_minimumcost(msg);
         
         // Insert time
         spt_add_neighbor(spt, anc);
@@ -543,7 +544,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             spt->treeInfoTable->rootId = spt->treeInfoTable->id;
             spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
             spt->treeInfoTable->cost = 0;
-            spt->treeInfoTable->pathMetric = 0; // TODO: MAXIMUM_PATH_METRIC_VALUE;
+            spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(msg);
 
             // Then remove ancestor entry
             for (i=0;i<spt->neighborhoodTable->size;i++) {
@@ -558,7 +559,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             spt->treeInfoTable->ancestorId = msg->senderTable->sourceAddressLogical;
             spt->treeInfoTable->cost = msg->cost + 1;
             spt->treeInfoTable->sequenceNumber = 4; // TODO: Support sequence number
-            spt->treeInfoTable->pathMetric = 0; // TODO: NewPathMetric
+            spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(msg);
 
             // Update ancestor entry with this message
             for (i=0;i<spt->neighborhoodTable->size;i++) {
@@ -566,7 +567,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
                     spt->neighborhoodTable->entries[i]->rootId = msg->rootAddressLogical;
                     spt->neighborhoodTable->entries[i]->cost = msg->cost + 1;
                     spt->neighborhoodTable->entries[i]->timestamp = msg->timestamp;
-                    spt->neighborhoodTable->entries[i]->pathMetric = 0; // TODO: NewPathMetric
+                    spt->neighborhoodTable->entries[i]->pathMetric = spt_pathmetric_minimumcost(msg);
                     break;
                 }
             }
@@ -592,7 +593,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             desc->isAncestor = false;
             desc->cost = msg->cost;
             desc->timestamp = msg->timestamp;
-            desc->pathMetric = 0; // TODO: NewPathMetric
+            desc->pathMetric = spt_pathmetric_minimumcost(msg);
 
             spt_add_neighbor(spt, desc);
         } else {
@@ -600,7 +601,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             desc->rootId = msg->rootAddressLogical;
             desc->cost = msg->cost;
             desc->timestamp = msg->timestamp;
-            desc->pathMetric = 0; // TODO: NewPathMetric
+            desc->pathMetric = spt_pathmetric_minimumcost(msg);
         }
         // Done!
     } else {
@@ -707,9 +708,8 @@ bool spt_beacon_should_be_ancestor(spt_msg_beacon_t* msg, protocol_spt* spt) {
     if (spt_node_is_better_than(msg->rootAddressLogical, ancestor->rootId)) {
         return true;
     } else if (msg->rootAddressLogical == ancestor->rootId) {
-        // Should be comparing path metrics here
-        // TODO: Implement path metrics
-        if (4 >= 3 + SPT_JUMP_THRESHOLD && msg->cost <= ancestor->cost + 2) { // 2 is hardcoded in Hypercast source
+        if (spt_pathmetric_minimumcost(msg) >= ancestor->pathMetric + SPT_JUMP_THRESHOLD 
+            && msg->cost <= ancestor->cost + 2) { // 2 is hardcoded in Hypercast source
             return true;
         }
     }
@@ -773,4 +773,12 @@ void spt_free_goodbye_message(spt_msg_goodbye_t* msg) {
     free(msg->senderTable);
     // Now finish by freeing the message itself
     free(msg);
+}
+
+int spt_pathmetric_minimumcost(spt_msg_beacon_t* beacon) {
+    if (beacon == NULL) {
+        return SPT_PATH_METRIC_FULL_VALUE;
+    } else {
+        return SPT_PATH_METRIC_FULL_VALUE - beacon->cost;
+    }
 }

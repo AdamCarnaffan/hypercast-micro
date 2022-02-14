@@ -6,6 +6,12 @@
 #include "hc_protocols.h"
 
 hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
+    // Before beginning to parse, check that the packet meets minimum length requirement
+    if (packet->size < HC_MSG_OVERLAY_MIN_LENGTH) {
+        ESP_LOGE(TAG, "Packet too small to be an overlay message");
+        return NULL;
+    }
+
     // Start by initializing the overlay message
     hc_msg_overlay_t* msg = hc_msg_overlay_init();
 
@@ -37,6 +43,10 @@ hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
                 ((hc_msg_ext_payload_t*)ext)->payload = malloc(sizeof(char) * ((hc_msg_ext_payload_t*)ext)->length);
                 // We've done prep, time to extract and copy the payload over
                 hc_packet_t* payloadPacket = packet_snip_to_bytes(packet, 8*((hc_msg_ext_payload_t*)ext)->length, extensionStartIndex + 24);
+                if (payloadPacket == NULL) {
+                    ESP_LOGE(TAG, "Failed to extract payload from extension");
+                    return NULL;
+                }
                 memcpy(((hc_msg_ext_payload_t*)ext)->payload, payloadPacket->data, payloadPacket->size);
                 // Then cleanup
                 free_packet(payloadPacket);

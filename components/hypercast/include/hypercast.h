@@ -57,6 +57,10 @@ void hc_install_config(hypercast_t*);
 // callback
 void hc_callback_handler(char*, int);
 
+// Config hash functions
+int set_overlay_hash();
+int hash(char*, int);
+
 #endif
 
 #ifndef TAG

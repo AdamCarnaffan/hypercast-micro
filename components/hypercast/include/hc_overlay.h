@@ -3,6 +3,8 @@
 
 #include "hc_buffer.h"
 
+#define HC_OVERLAY_MIN_LNEGTH 152 // Measured in bits
+
 #define HC_OVERLAY_MAX_EXTENSIONS 10
 #define HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH 256
 

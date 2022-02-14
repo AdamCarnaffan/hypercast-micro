@@ -23,7 +23,7 @@ void hc_protocol_parse(hc_packet_t *packet, long protocolId, hypercast_t *hyperc
     long protocolMessageType = packet_to_int(packet_snip_to_bytes(packet, 8, 24));
     long overlayId = packet_to_int(packet_snip_to_bytes(packet, 32, 32));
 
-    // TODO: We should also get the overlay hash id here and compare it to our own
+    // Make sure the Overlay hashes match
     if (overlayId != ((hc_protocol_shell_t*)(hypercast->protocol))->overlayId) {
         ESP_LOGE(TAG, "Overlay hash does not match this node's hash, discarding packet");
         return;
@@ -62,7 +62,6 @@ void* resolve_protocol_to_install(int config, uint32_t sourceLogicalAddress) { /
     // it would also be a switch, but here we're just returning a pre-built spt obj
     void* protocol = (void*)spt_protocol_from_config(sourceLogicalAddress);
     ((hc_protocol_shell_t*)protocol)->id = HC_PROTOCOL_SPT;
-    // TODO: Derive Overlay hash properly
-    ((hc_protocol_shell_t*)protocol)->overlayId = 1462324117;
+    ((hc_protocol_shell_t*)protocol)->overlayId = set_overlay_hash();
     return protocol;
 }

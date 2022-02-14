@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "lwip/sockets.h"
 #include "lwip/err.h"
+#include <string.h>
 
 #include "hypercast.h"
 #include "hc_engine.h"
@@ -80,37 +81,54 @@ void hc_callback_handler(char* data, int length) {
 }
 
 
-// HASHES USE A GENERAL HASH FUNCTION AND HERE'S HOW THAT SHAKES DOWN FOR THE OVERLAY
-//  public int setOverlayHash() {
-//         Vector hashPropertyVec = getListOfPropertyNames(this.propertyDoc, HyperCastConfig.OVERLAYHASH_PROPERTY_NAME);
-//         String s = "";
 
-//         for (int i = 0; i < hashPropertyVec.size(); i++) {
-//             String value = getStringProperty((String) hashPropertyVec.elementAt(i));
 
-//             if (value != null) {
-//                 if (s.equals("")) {
-//                     s = s + (String) hashPropertyVec.elementAt(i) + "=" + value;
-//                 } else {
-//                     s = s + "&" + (String) hashPropertyVec.elementAt(i) + "=" + value;
-//                 }
-//             }
-//         }
-//         return hash(s.getBytes());
-//     }
+// These functions may belong in a hc_config.c file?
+// Not sure if we have enough volume to merit it
+int set_overlay_hash() {
+    // In the desktop we have a selection of attributes, but here
+    // We're gonna hard-code them
+    // Then we can read them from the config file (no need to get them from hc or anything)
+    // Should say /Public/OverlayID=id1&/Public/Security/SecurityLevel=plaintext&/Public/Node=SPT for us
+    char* OVERLAYID = "id1";
+    char* SECURITYLEVEL = "plaintext";
+    char* NODE = "SPT";
 
-//     /**
-//      * Generates a hash of a byte array for the setOverlayHash function. I could
-//      * just use Java's hashCode for a string object, but I wanted something that
-//      * would be available to any other implementation language.
-//      */
-//     public static int hash(byte[] array) {
-//         int h = 0;
-//         for (int i = 0; i < array.length; i++) {
-//             byte upperByte = (byte) ((h >>> 24) & 0xFF);
-//             int leftShiftValue = ((upperByte ^ array[i]) & 0x07) + 1;
-//             h = ((h << leftShiftValue) ^ ((upperByte ^ array[i]) & 0xFF));
-//         }
+    // This is wrong? idk
+    char compound[180] = "";
 
-//         return h;
-//     }
+    // Because ours here is hardcoded values, we can just hardcode
+    // the "config paths" here in our compilation
+
+    // First is /Public/OverlayID
+    strcat(compound, "/Public/OverlayID=");
+    strcat(compound, OVERLAYID);
+
+    // Then the transition additon
+    strcat(compound, "&");
+
+    // Now /Public/Security/SecurityLevel
+    strcat(compound, "/Public/Security/SecurityLevel=");
+    strcat(compound, SECURITYLEVEL);
+
+    // Then the transition additon
+    strcat(compound, "&");
+
+    // Now /Public/Node
+    strcat(compound, "/Public/Node=");
+    strcat(compound, NODE);
+
+    // And now we're done!
+    return hash(compound, strlen(compound));
+}
+
+int hash(char* data, int length) {
+    int h = 0;
+    for (int i = 0; i < length; i++) {
+        char upperByte = (char) ((h >> 24) & 0xFF);
+        int leftShiftValue = ((upperByte ^ data[i]) & 0x07) + 1;
+        h = ((h << leftShiftValue) ^ ((upperByte ^ data[i]) & 0xFF));
+    }
+
+    return h;
+}

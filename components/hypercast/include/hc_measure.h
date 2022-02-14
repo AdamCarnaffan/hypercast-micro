@@ -4,7 +4,7 @@
 #include "hypercast.h"
 
 
-#define SEND_MEASURES 1
+#define SEND_MEASURES 0
 #define MAX_HTTP_OUTPUT_BUFFER 1024
 
 void log_nodestate(hypercast_t*);
