@@ -1,6 +1,9 @@
-#ifndef __HC_ENGINE_H__
-#define __HC_ENGINE_H__
+#ifndef __HC_PT_SPT_H__
+#define __HC_PT_SPT_H__
 
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
+#include "esp_log.h"
 #include "hypercast.h"
 
 #define SPT_BEACON_MESSAGE_TYPE 0
@@ -98,8 +101,8 @@ typedef struct pt_spt_backup_ancestor_table {
 } pt_spt_backup_ancestor_table_t;
 
 typedef struct pt_spt_adjacency_entry {
-    int id;
-    uint32_t quality;
+    uint32_t id;
+    uint8_t quality;
     uint64_t timestamp;
     // Ping buffer tracks the reception (true or false) of pings over the last SPT_MESSAGE_LQ_PING_BUFF_SIZE intervals
     bool* pingBuffer;
@@ -167,8 +170,4 @@ void spt_free_goodbye_message(spt_msg_goodbye_t*);
 // Pathmetrics
 int spt_pathmetric_minimumcost(spt_msg_beacon_t*);
 
-#endif
-
-#ifndef TAG
-#define TAG "HC_PROTOCOL_SPT"
 #endif

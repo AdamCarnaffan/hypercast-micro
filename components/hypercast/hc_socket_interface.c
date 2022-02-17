@@ -6,20 +6,20 @@
 * commands here directly (as we do), that we don't want the processing
 * of the packets to interfere. We'll need to spawn a task to do that
 */
-#include "esp_log.h"
 #include "lwip/sockets.h"
 #include "lwip/err.h"
 #include "esp_netif.h"
 #include <lwip/netdb.h>
 
+#include "hc_socket_interface.h"
 #include "hypercast.h"
 #include "hc_buffer.h"
 #include "hc_engine.h"
-#include "hc_socket_interface.h"
 
 #define MULTICAST_IPV4_ADDR "224.228.19.78"
 #define MC_PORT 9472
 
+static const char* TAG = "HC_SOCKET_INTERFACE";
 
 void hc_socket_interface_send_handler(void *pvParameters) {
     hypercast_t *hypercast = (hypercast_t *)pvParameters;
@@ -70,7 +70,7 @@ void hc_socket_interface_send_handler(void *pvParameters) {
 
         ((struct sockaddr_in *)faddr->ai_addr)->sin_port = htons(MC_PORT);
         inet_ntoa_r(((struct sockaddr_in *)faddr->ai_addr)->sin_addr, addrbuf, sizeof(addrbuf)-1);
-        ESP_LOGI(TAG, "Sending to IPV4 multicast address %s:%d...",  addrbuf, MC_PORT);
+        ESP_LOGI(TAG, "Sending %d bytes to IPV4 multicast address %s:%d...", packet->size, addrbuf, MC_PORT);
 
 
         int res = sendto(sock, packet->data, packet->size, 0, faddr->ai_addr, faddr->ai_addrlen);
@@ -81,7 +81,7 @@ void hc_socket_interface_send_handler(void *pvParameters) {
             ESP_LOGE(TAG, "Error sending data: %d", res);
             continue;
         }
-        ESP_LOGI(TAG, "Sent %d bytes to %s", res, "SOME ADDRESS");
+        ESP_LOGD(TAG, "Sent %d bytes to %s", res, "SOME ADDRESS");
     }
 }
 
@@ -132,6 +132,6 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
         ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
         // Then push the recvbuf into the hypercast buffer
         hc_push_buffer(hypercast->receiveBuffer, recvbuf, len);
-        ESP_LOGI(TAG, "length %d", hypercast->receiveBuffer->current_size);
+        ESP_LOGI(TAG, "Unprocessed Buffer Length: %d", hypercast->receiveBuffer->current_size);
     }
 }

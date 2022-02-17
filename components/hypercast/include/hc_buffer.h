@@ -1,6 +1,10 @@
 #ifndef __HC_BUFFER_H__
 #define __HC_BUFFER_H__
 
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
+#include "esp_log.h"
+
 // First do our definitions
 #define HC_BUFFER_DATA_MAX 1024
 
@@ -31,8 +35,4 @@ long long int packet_to_int(hc_packet_t*);
 int write_bytes(char*, long long d, int, int, int);
 int write_chars_to_bytes(char*, char*, int, int, int);
 
-#endif
-
-#ifndef TAG
-#define TAG "HC_BUFFER"
 #endif

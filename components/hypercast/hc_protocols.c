@@ -3,14 +3,13 @@
  * to the appropriate protocol handler. It will then do all of the remaining work to understand what was received,
  * and will then set things up as appropriate
  */
-#include "esp_log.h"
-
-#include "hc_buffer.h"
 #include "hc_protocols.h"
-#include "hc_measure.h"
+#include "hc_buffer.h"
 
 // Protocol Includes
 #include "spt.h"
+
+static const char* TAG = "HC_PROTOCOLS";
 
 void hc_protocol_parse(hc_packet_t *packet, long protocolId, hypercast_t *hypercast) {
     // Now check that hypercast protocol matches the message protocol
@@ -49,10 +48,6 @@ void hc_protocol_maintenance(hypercast_t *hypercast) {
         default:
             ESP_LOGE(TAG, "HYPERCAST RUNNING ON UNSUPPORTED PROTOCOL");
             break;
-    }
-    // Once we've maintained, we can also send a node update if enabled
-    if (SEND_MEASURES == 1) {
-        log_nodestate(hypercast);
     }
     return;
 }

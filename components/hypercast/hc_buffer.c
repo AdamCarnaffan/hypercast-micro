@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <math.h>
-#include "esp_log.h"
 
 #include "hc_buffer.h"
+
+static const char* TAG = "HC_BUFFER";
 
 void hc_allocate_buffer(hc_buffer_t *buffer, int length) {
     buffer->data = (hc_packet_t **)malloc(length * sizeof(hc_packet_t *));

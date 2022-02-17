@@ -1,7 +1,10 @@
-#include "hc_buffer.h"
-
 #ifndef __HC_MAIN_H__
 #define __HC_MAIN_H__
+
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
+#include "esp_log.h"
+#include "hc_buffer.h"
 
 #define HC_BUFFER_SIZE 100
 
@@ -61,8 +64,4 @@ void hc_callback_handler(char*, int);
 int set_overlay_hash();
 int hash(char*, int);
 
-#endif
-
-#ifndef TAG
-#define TAG "HC_MAIN"
 #endif

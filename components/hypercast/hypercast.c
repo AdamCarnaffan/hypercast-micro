@@ -1,5 +1,4 @@
 
-#include "esp_log.h"
 #include "lwip/sockets.h"
 #include "lwip/err.h"
 #include <string.h>
@@ -8,8 +7,11 @@
 #include "hc_engine.h"
 #include "hc_socket_interface.h"
 #include "hc_protocols.h"
+#include "hc_measure.h"
 
 #include "spt.h"
+
+static const char* TAG = "HC_MAIN";
 
 hypercast_t* hypercast;
 
@@ -34,6 +36,11 @@ void hc_init(void *pvParameters) {
     xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, hypercast, 5, NULL);
     xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, hypercast, 5, NULL);
     ESP_LOGI(TAG, "Handlers Started");
+
+    // Now check if we're taking measurements at regular intervals as well
+    if (SEND_MEASURES == 1) {
+        xTaskCreate(hc_measure_handler, "HYPERCAST_measure", 4096, hypercast, 5, NULL);
+    }
 
     // Start the engine
     hc_engine_handler(hypercast); // This runs the for loop on this thread forever :)

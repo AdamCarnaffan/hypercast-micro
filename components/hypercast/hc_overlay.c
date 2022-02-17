@@ -1,13 +1,14 @@
 
-#include "esp_log.h"
 #include <string.h>
 
 #include "hc_overlay.h"
 #include "hc_protocols.h"
 
+static const char* TAG = "HC_OVERLAY";
+
 hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
     // Before beginning to parse, check that the packet meets minimum length requirement
-    if (packet->size < HC_MSG_OVERLAY_MIN_LENGTH) {
+    if (packet->size < HC_MSG_OVERLAY_MIN_LENGTH/8) {
         ESP_LOGE(TAG, "Packet too small to be an overlay message");
         return NULL;
     }
@@ -61,6 +62,8 @@ hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
                 // Now get the size of the route record and each entry
                 // Note that the size of the route record is /4 because each entry is 4 bytes
                 ((hc_msg_ext_route_record_t*)ext)->routeRecordSize = packet_to_int(packet_snip_to_bytes(packet, 8, extensionStartIndex + 16)) / 4;
+                // We'll also allocate a routeRecordAddressList of MAX size
+                ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddressList = malloc(sizeof(uint32_t) * HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH);
                 // Now iterate from extensionStartIndex + 24 to get each entry (32 long)
                 for (int i=0; i<((hc_msg_ext_route_record_t*)ext)->routeRecordSize; i++) {
                     ((hc_msg_ext_route_record_t*)ext)->routeRecordLogicalAddressList[i] = packet_to_int(packet_snip_to_bytes(packet, 32, extensionStartIndex + 24 + (i*32)));
@@ -189,7 +192,7 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         extensionStartIndex += thisExtensionLength*8;
     }
 
-    ESP_LOGI(TAG, "Extensions found: %d", extensionsFound);
+    // ESP_LOGI(TAG, "Extensions found: %d", extensionsFound);
 
     // Now dataSize is extensionStartIndex but in bytes not bits
     dataSize = extensionStartIndex / 8;
@@ -249,6 +252,33 @@ void hc_msg_overlay_free(hc_msg_overlay_t* msg) {
     free(msg);
 }
 
+hc_msg_overlay_t* hc_msg_overlay_init_with_payload(hypercast_t* hypercast, char* payload, int payloadLength) {
+    hc_msg_overlay_t* msg = hc_msg_overlay_init();
+    // Now populate body of message
+    msg->version = 3;
+    msg->dataMode = 1;
+    msg->hopLimit = 254;
+    msg->sourceLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+    msg->previousHopLogicalAddress = hypercast->senderTable->sourceAddressLogical;
+    // Then add payload extension
+    hc_msg_ext_payload_t* ext = malloc(sizeof(hc_msg_ext_payload_t));
+    ext->type = HC_MSG_EXT_PAYLOAD_TYPE;
+    ext->order = 1;
+    ext->length = payloadLength;
+    ext->payload = malloc(sizeof(char)*payloadLength);
+    memcpy(ext->payload, payload, payloadLength);
+    hc_msg_overlay_insert_extension(msg, ext);
+    // Now add the route record extension
+    hc_msg_ext_route_record_t* ext2 = malloc(sizeof(hc_msg_ext_route_record_t));
+    ext2->type = HC_MSG_EXT_ROUTE_RECORD_TYPE;
+    ext2->order = 2;
+    ext2->routeRecordSize = 1;
+    ext2->routeRecordLogicalAddressList = malloc(sizeof(uint32_t)*ext2->routeRecordSize);
+    ext2->routeRecordLogicalAddressList[0] = hypercast->senderTable->sourceAddressLogical;
+    hc_msg_overlay_insert_extension(msg, ext2);
+    return msg;
+}
+
 int hc_msg_overlay_insert_extension(hc_msg_overlay_t* msg, void* extension) {
     // Because the limit for extensions is so low, we can just do a dumb hash here
     int type = ((hc_msg_ext_t*)extension)->type;
@@ -302,4 +332,88 @@ int hc_msg_overlay_get_primary_payload(hc_msg_overlay_t* msg, char** payload_des
     }
 
     return -1;
+}
+
+int hc_msg_overlay_retrieve_extension_of_type(hc_msg_overlay_t* msg, int type, void** extension) {
+     // Find payload extensions in the extension array
+    int extensionIndex = type;
+
+    while (msg->extensions[extensionIndex] != NULL) {
+        // We're basically looking for the first extension of the correct type
+        // (because of how ordering works)
+        if (((hc_msg_ext_t*)msg->extensions[extensionIndex])->type == type) {
+            // We found the first payload extension, so let's return it
+            *extension = msg->extensions[extensionIndex];
+            return 1;
+        }
+        extensionIndex++;
+        if (extensionIndex >= HC_OVERLAY_MAX_EXTENSIONS) {
+            extensionIndex = 0;
+        }
+        if (extensionIndex == type) {
+            // We've tried all the positions, and we're still failing
+            ESP_LOGE(TAG, "Failed to find retrieve extension of type %d in Overlay Message", type);
+            return -1;
+        }
+    }
+
+    return -1;
+}
+
+int hc_msg_overlay_ext_get_next_order(hc_msg_overlay_t* msg) {
+    // Find the next order in the extension array
+    int extensionIndex = 0;
+    int maxOrder = 0;
+    hc_msg_ext_t* extension;
+    for (extensionIndex=0;extensionIndex<HC_OVERLAY_MAX_EXTENSIONS;extensionIndex++) {
+        if (msg->extensions[extensionIndex] == NULL) { continue; }
+        // Now we want to find the order number of this extension
+        extension = (hc_msg_ext_t*)msg->extensions[extensionIndex];
+        if (extension->order > maxOrder) {
+            maxOrder = extension->order;
+        }
+    }
+
+    return maxOrder + 1;
+}
+
+int hc_overlay_route_record_contains(hc_msg_overlay_t* msg, int logicalAddress) {
+    // First check if there is a route record
+    hc_msg_ext_route_record_t* routeRecord = NULL;
+    int recordFindResult = hc_msg_overlay_retrieve_extension_of_type(msg, HC_MSG_EXT_ROUTE_RECORD_TYPE, (void*)&routeRecord);
+
+    if (recordFindResult == 1) {
+        // We found a route record, so let's check if it contains the logical address
+        for (int i=0;i<routeRecord->routeRecordSize;i++) {
+            if (routeRecord->routeRecordLogicalAddressList[i] == logicalAddress) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+void hc_overlay_route_record_append(hc_msg_overlay_t* msg, int logicalAddress) {
+    // First check if there is a route record
+    hc_msg_ext_route_record_t* routeRecord = NULL;
+    int recordFindResult = hc_msg_overlay_retrieve_extension_of_type(msg, HC_MSG_EXT_ROUTE_RECORD_TYPE, (void*)&routeRecord);
+
+    // If not, add one
+    if (recordFindResult == -1) {
+        routeRecord = malloc(sizeof(hc_msg_ext_route_record_t));
+        routeRecord->type = HC_MSG_EXT_ROUTE_RECORD_TYPE;
+        routeRecord->order = hc_msg_overlay_ext_get_next_order(msg);
+        routeRecord->routeRecordSize = 1;
+        routeRecord->routeRecordLogicalAddressList = malloc(sizeof(uint32_t) * HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH);
+        // Add the message sender to the table automatically
+        routeRecord->routeRecordLogicalAddressList[0] = msg->sourceLogicalAddress;
+        hc_msg_overlay_insert_extension(msg, (void*)routeRecord);
+    }
+
+    // Now we'll add our logical address to the route record
+    routeRecord->routeRecordLogicalAddressList[routeRecord->routeRecordSize] = logicalAddress;
+    routeRecord->routeRecordSize++;
+
+    // Done!
 }

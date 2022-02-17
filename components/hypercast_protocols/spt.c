@@ -1,15 +1,16 @@
 
-#include "esp_log.h"
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
 
+#include "spt.h"
 #include "hc_protocols.h"
 #include "hc_buffer.h"
 #include "hc_lib.h"
-#include "spt.h"
 #include "hc_overlay.h"
+
+static const char* TAG = "HC_PROTOCOL_SPT";
 
 void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messageLength, hypercast_t* hypercast) {
     ESP_LOGI(TAG, "Reached SPT Parser");
@@ -78,16 +79,17 @@ void spt_parse(hc_packet_t* packet, int messageType, long overlayID, long messag
             beaconMessage->timestamp /= 1000;
             ESP_LOGI(TAG, "Beacon Message Parsed, timestamp is %" PRIu64 "", beaconMessage->timestamp);
             // Now we need to parse the adjacency table
-            long tableSize = packet_to_int(packet_snip_to_bytes(packet, 32, bitOffset + 160)); // "Sender Count"
-            // ESP_LOGI(TAG, "Adjacencytablelength %d", tableSize);
+            uint32_t tableSize = packet_to_int(packet_snip_to_bytes(packet, 32, bitOffset + 160)); // "Sender Count"
+            ESP_LOGI(TAG, "%s", packet_snip_to_bytes(packet, 32, bitOffset + 160)->data);
             beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
             beaconMessage->adjacencyTable->size = tableSize;
             beaconMessage->adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * tableSize);
-            startingIndex = bitOffset + 160;
+            ESP_LOGI(TAG, "Table size is %u, found at %d", tableSize, bitOffset + 160);
+            startingIndex = bitOffset + 192;
             for (i=0; i<tableSize; i++) {
                 beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
                 beaconMessage->adjacencyTable->entries[i]->id = packet_to_int(packet_snip_to_bytes(packet, 32, startingIndex+i*40));
-                beaconMessage->adjacencyTable->entries[i]->quality = packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex+i*40+32));
+                beaconMessage->adjacencyTable->entries[i]->quality = packet_to_int(packet_snip_to_bytes(packet, 8, startingIndex+(i*40)+32));
                 // Now we need to do an & operation on "quality" because it actually only occupies bits 2-8 ( & 0x7F )
                 beaconMessage->adjacencyTable->entries[i]->quality = beaconMessage->adjacencyTable->entries[i]->quality & 0x7F;
             }
@@ -249,7 +251,7 @@ protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
     spt = malloc(sizeof(protocol_spt));
     spt->id = HC_PROTOCOL_SPT; // Not sure we need this
     spt->lastBeacon = 0; // Never sent, so diff will be massive!
-    spt->heartbeatTime = 3;
+    spt->heartbeatTime = 5;
 
     // Init tables
 
@@ -304,7 +306,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     int i;
 
     // Now execute
-    ESP_LOGI(TAG, "Time to Maintain SPT");
+    ESP_LOGI(TAG, "Maintaining SPT");
 
     // 1. Generate beacon message base
     spt_msg_beacon_t *beaconMessage = malloc(sizeof(spt_msg_beacon_t));
@@ -396,35 +398,12 @@ void spt_maintenance(hypercast_t* hypercast) {
     }
 
     // TEMP: Whenever we finish maintenance, send an overlay message out!
-    hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init();
-    overlayMessage->version = 3;
-    overlayMessage->dataMode = 1;
-    overlayMessage->hopLimit = 224;
-    overlayMessage->sourceLogicalAddress = hypercast->senderTable->sourceAddressLogical;
-    ESP_LOGI(TAG, "HC SEDER previous hop address: %d", hypercast->senderTable->sourceAddressLogical);
-    overlayMessage->previousHopLogicalAddress = hypercast->senderTable->sourceAddressLogical;
-    ESP_LOGI(TAG, "HC SEDER  previous hop address: %d", hypercast->senderTable->sourceAddressLogical);
-    
-    // Add payload
-    overlayMessage->extensions[0] = malloc(sizeof(hc_msg_ext_payload_t));
-    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->type = HC_MSG_EXT_PAYLOAD_TYPE;
-    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->order = 1;
-    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->length = 11;
-    ((hc_msg_ext_payload_t*)overlayMessage->extensions[0])->payload = "Hello World";
-    // Add route record
-    overlayMessage->extensions[1] = malloc(sizeof(hc_msg_ext_route_record_t));
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->type = HC_MSG_EXT_ROUTE_RECORD_TYPE;
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->order = 2;
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordSize = 1;
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddressList = malloc(sizeof(uint32_t)*HC_OVERLAY_MAX_ROUTE_RECORD_LENGTH);
-    ((hc_msg_ext_route_record_t*)overlayMessage->extensions[1])->routeRecordLogicalAddressList[0] = hypercast->senderTable->sourceAddressLogical;
+    char payload[] = "Hello World from ESP32!";
+    hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init_with_payload(hypercast, payload, strlen(payload));
     // Then encode it
     hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
     // Then send it off
     hc_push_buffer(hypercast->sendBuffer, packet2->data, packet2->size);
-    // Then free memory
-    // hc_msg_overlay_free(overlayMessage);
-    // free(packet); // data will be freed later
 
     ESP_LOGI(TAG, "SPT Maintenance Finished");
 }
@@ -480,7 +459,8 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     adjacency_table_entry_t* adjacentMyself = NULL;
     // First locate
     for (i=0;i<msg->adjacencyTable->size;i++) {
-        if (msg->adjacencyTable->entries[i]->id == spt->treeInfoTable->id) {
+        // NULL check probably the result of a bad design elsewhere, not a good solution
+        if (msg->adjacencyTable->entries[i] != NULL && msg->adjacencyTable->entries[i]->id == spt->treeInfoTable->id) {
             adjacentMyself = msg->adjacencyTable->entries[i];
             break;
         }

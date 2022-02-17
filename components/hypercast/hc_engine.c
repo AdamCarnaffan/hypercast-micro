@@ -4,15 +4,15 @@
 * This is also where the event that handles reading the receive buffer lives, and where we'll shoot messages
 * into the send queue from
 */
-#include "esp_log.h"
+#include "hc_engine.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "hypercast.h"
-#include "hc_buffer.h"
-#include "hc_engine.h"
 #include "hc_protocols.h"
 #include "hc_overlay.h"
+
+static const char* TAG = "HC_ENGINE";
 
 void hc_engine_handler(hypercast_t *hypercast) {
     // Now init and prep for engine
@@ -71,12 +71,23 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
         ESP_LOGE(TAG, "Failed to parse overlay message");
         return;
     }
+
+    // Before taking any action, check for a route record table
+    // If we're on it, drop the message
+    if (hc_overlay_route_record_contains(msg, hypercast->senderTable->sourceAddressLogical) == 1) {
+        ESP_LOGI(TAG, "Dropping message from %d because we're on the route record table", msg->sourceLogicalAddress);
+        hc_msg_overlay_free(msg);
+        return;
+    }
     
     // Once we've read the packet, we need to send it forward!
     // Before forwarding, tick down the hop limit and add to the last hop logical
     msg->hopLimit = msg->hopLimit - 1;
     msg->previousHopLogicalAddress = hypercast->senderTable->sourceAddressLogical;
-    // Then send it out!
+    // We'll also append ourselves to the route record (creating one if the other node was negligent)
+    hc_overlay_route_record_append(msg, hypercast->senderTable->sourceAddressLogical);
+
+    // Then send it out! (forwarding part)
     hc_packet_t *forwardPacket = hc_msg_overlay_encode(msg);
     hc_push_buffer(hypercast->sendBuffer, forwardPacket->data, forwardPacket->size);
     // The packet data has been passed to the buffer, so we can cleanup the packet

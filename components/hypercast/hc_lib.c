@@ -1,9 +1,10 @@
 
-#include "esp_log.h"
 #include <time.h>
 #include <sys/time.h>
 
 #include "hc_lib.h"
+
+static const char* TAG = "HC_LIB";
 
 uint64_t get_epoch() {
     return HC_FIXED_TIME_MIN_VALUE + (long)time(NULL);

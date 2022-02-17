@@ -1,19 +1,38 @@
 
 #include <string.h>
-#include "esp_log.h"
 #include "esp_netif.h"
-#include "esp_http_client.h"
 
 #include "hc_measure.h"
 #include "hc_buffer.h"
+
+static const char* TAG = "HC_MEASURE";
 
 esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
+void hc_measure_handler(void *pvParameters) {
+    hypercast_t *hypercast = (hypercast_t *)pvParameters;
+
+    while (1) {
+        // We'll always just take a sleep
+        vTaskDelay(MEASUREMENT_INTERVAL / portTICK_PERIOD_MS);
+
+        // And after our sleep we try the measure
+        log_nodestate(hypercast);
+    }
+}
+
 void log_nodestate(hypercast_t* hypercast) {
+
     // Init buffer
     char local_response_buffer[MAX_HTTP_OUTPUT_BUFFER] = {0};
+
+    // If I want CPU usage, use https://github.com/Carbon225/esp32-perfmon
+    // Read resources
+    int freeHeapSize = esp_get_free_heap_size();
+
+    ESP_LOGI(TAG, "Free Heap: %d / %d", freeHeapSize, MAX_MEMORY_AVAILABLE);
 
     // Setup config
     esp_http_client_config_t config = {
@@ -43,5 +62,8 @@ void log_nodestate(hypercast_t* hypercast) {
     }
 
     ESP_LOGI(TAG, "Nodestate recorded");
+    
+    // Cleanup
+    esp_http_client_cleanup(client);
     return;
 }
