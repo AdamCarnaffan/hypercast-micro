@@ -204,7 +204,7 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         write_bytes(data, 0, 8, 72, HC_BUFFER_DATA_MAX);
     }
     // Now we're done with the ordered extensions array, free it
-    // free(extensionsOrdered);
+    free(extensionsOrdered);
 
     // And we add the length of the extensions put together
     write_bytes(data, extensionsLength, 16, 40, HC_BUFFER_DATA_MAX);
@@ -231,25 +231,32 @@ hc_msg_overlay_t* hc_msg_overlay_init() {
 }
 
 void hc_msg_overlay_free(hc_msg_overlay_t* msg) {
+    hc_msg_overlay_free_extensions(msg->extensions);
+    // Then free the message
+    free(msg);
+}
+
+void hc_msg_overlay_free_extensions(void** extensions) {
     // First free allocated extensions
     for (int i=0;i<HC_OVERLAY_MAX_EXTENSIONS;i++) {
-        if (msg->extensions[i] != NULL) {
+        if (extensions[i] != NULL) {
             // First check (based on type) if we need to free sub-components
-            switch (((hc_msg_ext_t*)msg->extensions[i])->type) {
+            switch (((hc_msg_ext_t*)extensions[i])->type) {
                 case HC_MSG_EXT_PAYLOAD_TYPE:
-                    free(((hc_msg_ext_payload_t*)msg->extensions[i])->payload);
+                    free(((hc_msg_ext_payload_t*)extensions[i])->payload);
+                    break;
+                case HC_MSG_EXT_ROUTE_RECORD_TYPE:
+                    free(((hc_msg_ext_route_record_t*)extensions[i])->routeRecordLogicalAddressList);
                     break;
                 default:
                     // Some extensions will have nothing to free
                     break;
             }
-            free(msg->extensions[i]);
+            free(extensions[i]);
         }
     }
     // Then free the extensions array
-    free(msg->extensions);
-    // Then free the message
-    free(msg);
+    free(extensions);
 }
 
 hc_msg_overlay_t* hc_msg_overlay_init_with_payload(hypercast_t* hypercast, char* payload, int payloadLength) {

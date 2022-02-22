@@ -317,6 +317,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     beaconMessage->senderTable->size = hypercast->senderTable->size;
     beaconMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage->senderTable->size);
     for (int i=0;i<beaconMessage->senderTable->size;i++) {
+        // Allocation is unnecessary here
         beaconMessage->senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
         beaconMessage->senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
         beaconMessage->senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
@@ -336,6 +337,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     beaconMessage->adjacencyTable->size = spt->adjacencyTable->size;
     beaconMessage->adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
     for (i=0; i<spt->adjacencyTable->size; i++) {
+        // Allocation is unnecessary here
         beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
         beaconMessage->adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
         beaconMessage->adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
@@ -347,7 +349,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     // 5. Update last beacon time
     spt->lastBeacon = currentTime;
     // 6. Free memory
-    // spt_free_beacon_message(beaconMessage);
+    spt_free_beacon_message(beaconMessage);
 
     // First we'll timeout the adjacency entries
     if (spt->adjacencyTable->size > 0) {
@@ -404,6 +406,9 @@ void spt_maintenance(hypercast_t* hypercast) {
     hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
     // Then send it off
     hc_push_buffer(hypercast->sendBuffer, packet2->data, packet2->size);
+    // Then free the message
+    free(packet2);
+    hc_msg_overlay_free(overlayMessage);
 
     ESP_LOGI(TAG, "SPT Maintenance Finished");
 }
@@ -735,11 +740,13 @@ void spt_free_beacon_message(spt_msg_beacon_t* msg) {
     for (int i=0;i<msg->adjacencyTable->size;i++) {
         free(msg->adjacencyTable->entries[i]);
     }
+    free(msg->adjacencyTable->entries);
     free(msg->adjacencyTable);
     // Free sender table
     for (int i=0;i<msg->senderTable->size;i++) {
         free(msg->senderTable->entries[i]);
     }
+    free(msg->senderTable->entries);
     free(msg->senderTable);
     // Now finish by freeing the message itself
     free(msg);

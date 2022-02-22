@@ -59,6 +59,7 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t*);
 hc_msg_overlay_t* hc_msg_overlay_init();
 hc_msg_overlay_t* hc_msg_overlay_init_with_payload(hypercast_t*, char*, int); // Build a full payload message for tests
 void hc_msg_overlay_free(hc_msg_overlay_t*);
+void hc_msg_overlay_free_extensions(void**);
 int hc_msg_overlay_insert_extension(hc_msg_overlay_t*, void*); // returns result (success = 1, failure = -1)
 int hc_msg_overlay_get_primary_payload(hc_msg_overlay_t*, char**, int*); // returns result (success = 1, failure = -1)
 int hc_msg_overlay_retrieve_extension_of_type(hc_msg_overlay_t*, int, void**); // returns result (success = 1, failure = -1)
