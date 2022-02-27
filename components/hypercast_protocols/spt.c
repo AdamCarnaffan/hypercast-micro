@@ -249,7 +249,7 @@ hc_packet_t* spt_encode(void *msg, int messageType, hypercast_t *hypercast) {
 protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
     protocol_spt* spt;
     spt = malloc(sizeof(protocol_spt));
-    spt->id = HC_PROTOCOL_SPT; // Not sure we need this
+    spt->id = HC_PROTOCOL_SPT;
     spt->lastBeacon = 0; // Never sent, so diff will be massive!
     spt->heartbeatTime = 5;
 
