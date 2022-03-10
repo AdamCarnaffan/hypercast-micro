@@ -60,3 +60,13 @@ void* resolve_protocol_to_install(int config, uint32_t sourceLogicalAddress) { /
     ((hc_protocol_shell_t*)protocol)->overlayId = set_overlay_hash();
     return protocol;
 }
+
+bool hc_overlay_sender_trusted(hc_msg_overlay_t* msg, hypercast_t* hypercast) {
+    // This is determined by protocol
+    switch (((hc_protocol_shell_t*)hypercast->protocol)->id) {
+        case HC_PROTOCOL_SPT:
+            return spt_overlay_sender_trusted(msg, hypercast);
+        default:
+            return false;
+    }
+}

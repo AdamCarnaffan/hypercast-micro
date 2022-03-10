@@ -8,7 +8,6 @@
 #include "hc_protocols.h"
 #include "hc_buffer.h"
 #include "hc_lib.h"
-#include "hc_overlay.h"
 
 static const char* TAG = "HC_PROTOCOL_SPT";
 
@@ -600,6 +599,21 @@ void spt_handle_goodbye_message(spt_msg_goodbye_t* msg, hypercast_t* hypercast) 
     return;
 }
 
+bool spt_overlay_sender_trusted(hc_msg_overlay_t* msg, hypercast_t* hypercast) {
+    // In SPT, message needs to be in adjacency table
+    protocol_spt* spt = (protocol_spt*)hypercast->protocol;
+    
+    // Easy, iterate through table, find sender
+    // If we find it, return true
+    for (int i=0;i<spt->adjacencyTable->size;i++) {
+        if (spt->adjacencyTable->entries[i]->id == msg->sourceLogicalAddress) {
+            return true;
+        }
+    }
+
+    // We didn't find it, return false
+    return false;
+}
 
 
 

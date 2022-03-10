@@ -5,6 +5,7 @@
 
 #include "esp_log.h"
 #include "hypercast.h"
+#include "hc_overlay.h"
 
 #define SPT_BEACON_MESSAGE_TYPE 0
 #define SPT_BEACON_MESSAGE_BASE_LENGTH 60
@@ -148,6 +149,7 @@ typedef struct protocol_spt {
 void spt_parse(hc_packet_t*, int, long, long, hypercast_t*);
 hc_packet_t* spt_encode(void* msg, int, hypercast_t*);
 void spt_maintenance(hypercast_t*);
+bool spt_overlay_sender_trusted(hc_msg_overlay_t*, hypercast_t*);
 
 protocol_spt* spt_protocol_from_config(uint32_t);
 
