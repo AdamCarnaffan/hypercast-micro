@@ -72,7 +72,7 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
         return;
     }
 
-    // Then check if this message is from a member of our adjacency table
+    // Then check if this message is from a member of our ?neighbor? table
     // If it is, then continue, otherwise, stop
     if (hc_overlay_sender_trusted(msg, hypercast) == false) {
         ESP_LOGD(TAG, "Sender not trusted - bouncing message");

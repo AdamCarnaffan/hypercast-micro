@@ -160,7 +160,7 @@ void spt_handle_goodbye_message(spt_msg_goodbye_t*, hypercast_t*);
 // Protocol Support Functions
 void spt_ping_buffer_record(uint64_t, bool, pt_spt_adjacency_entry_t*);
 int spt_ping_buffer_get_count(pt_spt_adjacency_entry_t*);
-bool spt_beacon_should_be_ancestor(spt_msg_beacon_t*, protocol_spt*);
+bool spt_beacon_should_be_parent(spt_msg_beacon_t*, protocol_spt*);
 bool spt_node_is_better_than(uint32_t, uint32_t);
 void spt_remove_neighbor(protocol_spt*, uint32_t);
 void spt_add_neighbor(protocol_spt*, pt_spt_neighborhood_entry_t*);

@@ -28,6 +28,13 @@ void hc_protocol_parse(hc_packet_t *packet, long protocolId, hypercast_t *hyperc
         return;
     }
     
+    // Make sure that "MessageLength" is less than or equal to the packet length
+    // Otherwise some packet was lost
+    if (messageLength > packet->size) {
+        ESP_LOGE(TAG, "Message length > packet length, packet dropped");
+        return;
+    }
+    
     switch (protocolId) {
         case HC_PROTOCOL_SPT:
             spt_parse(packet, protocolMessageType, overlayId, messageLength, hypercast);

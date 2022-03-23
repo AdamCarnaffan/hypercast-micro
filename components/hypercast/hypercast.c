@@ -39,7 +39,7 @@ void hc_init(void *pvParameters) {
 
     // Now check if we're taking measurements at regular intervals as well
     if (SEND_MEASURES == 1) {
-        xTaskCreate(hc_measure_handler, "HYPERCAST_measure", 4096, hypercast, 5, NULL);
+        xTaskCreate(hc_measure_handler, "HYPERCAST_measure", 8192, hypercast, 5, NULL);
     }
 
     // Start the engine
@@ -64,7 +64,7 @@ void hc_install_config(hypercast_t *hypercast) {
     // Setup the first entry
     hypercast->senderTable->entries[0] = malloc(sizeof(hc_sender_entry_t));
     hypercast->senderTable->entries[0]->type = 1;
-    hypercast->senderTable->entries[0]->hash = 64935;
+    hypercast->senderTable->entries[0]->hash = 64935; // Should hash this but a constant is fine for this purpose
     hypercast->senderTable->entries[0]->addressLength = 6;
     hypercast->senderTable->entries[0]->address = malloc(sizeof(hc_ipv4_addr_t));
     hypercast->senderTable->entries[0]->address->addr[0] = 224;
