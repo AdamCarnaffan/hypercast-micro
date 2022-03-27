@@ -276,6 +276,7 @@ protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
 
     // ADJACENCY
     spt->adjacencyTable = malloc(sizeof(pt_spt_adjacency_table_t));
+    spt->adjacencyTable->entries = malloc(sizeof(pt_spt_adjacency_entry_t*)*SPT_TABLE_ADJACENCY_MAX_SIZE);
     spt->adjacencyTable->size = 0;
 
     // CORE TABLE
@@ -429,7 +430,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     // This section is a replication of the logic found in the SPT protocol manual
     // at https://www.comm.utoronto.ca/hypercast/material/SPT_Protocol_03-20-05.pdf on pages 18-20
 
-    ESP_LOGI(TAG, "Processing Beacon Message");
+    ESP_LOGI(TAG, "Processing Beacon Message from %d", msg->senderTable->sourceAddressLogical);
 
     // Set up globals
     int i;
@@ -469,8 +470,9 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     // We also need to record the ping to the ping buffer
     spt_ping_buffer_record(get_epoch(), true, adjEntry);
 
-    // Now we'll update the quality
+    // Now we'll update the quality & timestamp
     adjEntry->quality = spt_ping_buffer_get_count(adjEntry);
+    adjEntry->timestamp = get_epoch();
 
     // 2. Adjacency & Reliability Test
 
@@ -507,7 +509,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     }
 
     // 5. Update Tree & Neighborhood Tables
-    if (beaconShouldBeParent) { // CASE: Beacon is our parent
+    if (beaconShouldBeParent || spt->treeInfoTable->ancestorId == msg->senderTable->sourceAddressLogical) { // CASE: Beacon is our parent
         uint32_t oldAncestor = spt->treeInfoTable->ancestorId;
 
         spt->treeInfoTable->ancestorId = msg->senderTable->sourceAddressLogical;
@@ -535,16 +537,24 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             anc->rootId = msg->rootAddressLogical;
             anc->isAncestor = true; // isAncestor == isParent
             anc->cost = msg->cost;
-            anc->timestamp = msg->timestamp;
+            anc->timestamp = get_epoch();
             anc->pathMetric = spt_pathmetric_minimumcost(msg);
             
             // Insert time
             spt_add_neighbor(spt, anc);
         }
 
+        // Once we know that our neighborhood table is correct, fetch the neighbor and update the timestamp
+        for (i=0;i<spt->neighborhoodTable->size;i++) {
+            if (spt->neighborhoodTable->entries[i]->neighborId == msg->senderTable->sourceAddressLogical) {
+                spt->neighborhoodTable->entries[i]->timestamp = get_epoch();
+                break;
+            }
+        }
+
         // Now if we've been told that the rootId is greater than our id, we're the root now
         if (msg->rootAddressLogical > spt->treeInfoTable->id) {
-            spt->treeInfoTable->ancestorId = 0;
+            spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
             spt->treeInfoTable->rootId = spt->treeInfoTable->id;
         }
     } else if (msg->parentAddressLogical == spt->treeInfoTable->id) { // CASE: We are beacon parent
@@ -566,7 +576,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             desc->rootId = msg->rootAddressLogical;
             desc->isAncestor = false;
             desc->cost = msg->cost;
-            desc->timestamp = msg->timestamp;
+            desc->timestamp = get_epoch();
             desc->pathMetric = spt_pathmetric_minimumcost(msg);
 
             spt_add_neighbor(spt, desc);
@@ -574,7 +584,7 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             // Update
             desc->rootId = msg->rootAddressLogical;
             desc->cost = msg->cost;
-            desc->timestamp = msg->timestamp;
+            desc->timestamp = get_epoch();
             desc->pathMetric = spt_pathmetric_minimumcost(msg);
         }
         // Done!
@@ -688,21 +698,21 @@ bool spt_beacon_should_be_parent(spt_msg_beacon_t* msg, protocol_spt* spt) {
         }
     }
 
-    if (msg->timestamp < spt->lastBeacon) { return false; }
+    // Note: on ESP nodes we throw out the notion of precise enough time to guarantee this
+    // if (msg->timestamp < spt->lastBeacon) { return false; }
 
     if (ancestor == NULL) {
+        ESP_LOGI(TAG, "We think that Ancestor is null!");
         // We should make sure that treeInfoTable knows ancestor is null
-        spt->treeInfoTable->ancestorId = 0;
+        spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
         return spt_node_is_better_than(msg->rootAddressLogical, spt->treeInfoTable->id);
     }
 
-    // By here we know ancestor != NULL
-    // if (spt_node_is_better_than(msg->rootAddressLogical, ancestor->rootId)) {
-    //     return true;
-    // } else 
+    // Check if swap of parent is warranted by this policy
     if (msg->rootAddressLogical == ancestor->rootId) {
         if (spt_pathmetric_minimumcost(msg) >= ancestor->pathMetric + SPT_JUMP_THRESHOLD 
             && msg->cost <= ancestor->cost + 2) { // 2 is hardcoded in Hypercast source
+            ESP_LOGI(TAG, "Recommending parent swap with better parent");
             return true;
         }
     }
@@ -715,6 +725,8 @@ bool spt_node_is_better_than(uint32_t a, uint32_t b) {
 }
 
 void spt_remove_neighbor(protocol_spt* spt, uint32_t neighborId) {
+    ESP_LOGI(TAG, "Removing Neighbor: %d", neighborId);
+    ESP_LOGI(TAG, "Current parent is: %d", spt->treeInfoTable->ancestorId);
     // Remove neighbor from neighborhood table
     for (int i=0;i<spt->neighborhoodTable->size;i++) {
         if (spt->neighborhoodTable->entries[i]->neighborId == neighborId) {

@@ -77,13 +77,17 @@ void hc_socket_interface_send_handler(void *pvParameters) {
 
         int res = sendto(sock, packet->data, packet->size, 0, faddr->ai_addr, faddr->ai_addrlen);
         // Now that we've sent the packet, we can free it
-        free_packet(packet);
+        // free_packet(packet); // Clearing this makes it impossible for the sendto to finish send async
 
         if (res < 0) {
             ESP_LOGE(TAG, "Error sending data: %d", res);
             continue;
         }
         ESP_LOGD(TAG, "Sent %d bytes to %s", res, "SOME ADDRESS");
+
+        // This thread sleeps now to avoid flooding the port or overwriting its vibes
+        vTaskDelay(600 / portTICK_PERIOD_MS);
+        
     }
 }
 
@@ -137,5 +141,8 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
         // Then push the recvbuf into the hypercast buffer
         hc_push_buffer(hypercast->receiveBuffer, recvbuf, len);
         ESP_LOGI(TAG, "Unprocessed Buffer Length: %d", hypercast->receiveBuffer->current_size);
+
+        // This thread sleeps now to avoid flooding the port or overwriting its vibes
+        vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }
