@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
+#include <pthread.h>
 
 #include "hc_buffer.h"
 
@@ -10,11 +12,16 @@ void hc_allocate_buffer(hc_buffer_t *buffer, int length) {
     buffer->capacity = length;
     buffer->current_size = 0;
     buffer->front = 0;
+    pthread_mutex_init(&buffer->buffer_lock, NULL);
 }
 
 hc_packet_t* hc_pop_buffer(hc_buffer_t *buffer) {
+    pthread_mutex_lock(&buffer->buffer_lock);
+    ESP_LOGI(TAG, "Start buffer pop");
     // Before anything, check that the buffer isn't empty
     if (buffer->current_size == 0) {
+        ESP_LOGI(TAG, "Buffer is empty");
+        pthread_mutex_unlock(&buffer->buffer_lock);
         return NULL;
     }
     hc_packet_t *data = buffer->data[buffer->front];
@@ -22,23 +29,34 @@ hc_packet_t* hc_pop_buffer(hc_buffer_t *buffer) {
     buffer->data[buffer->front] = NULL;
     buffer->front = (buffer->front + 1) % buffer->capacity;
     buffer->current_size--;
+    // We're done, unlock the buffer
+    ESP_LOGI(TAG, "Finish buffer pop");
+    pthread_mutex_unlock(&buffer->buffer_lock);
     // Then return the data
     return data;
 }
 
 void hc_push_buffer(hc_buffer_t *buffer, char *data, int packet_length) {
+    pthread_mutex_lock(&buffer->buffer_lock);
     // First check if there is space
     if (buffer->current_size == buffer->capacity) {
         ESP_LOGE(TAG, "Buffer is full");
+        pthread_mutex_unlock(&buffer->buffer_lock);
         return;
     }
+    ESP_LOGI(TAG, "Start buffer push");
     // Then allocate the data
     hc_packet_t *packet = (hc_packet_t *)malloc(sizeof(hc_packet_t));
-    packet->data = data;
+    // Make sure to copy the data into the packet
+    packet->data = (char *)malloc(sizeof(char)*packet_length);
+    memcpy(packet->data, data, packet_length);
     packet->size = packet_length;
     // Add the data to the buffer
     buffer->data[(buffer->front + buffer->current_size) % buffer->capacity] = packet;
     buffer->current_size++;
+    // We're done, unlock the buffer
+    ESP_LOGI(TAG, "Finish buffer push");
+    pthread_mutex_unlock(&buffer->buffer_lock);
 }
 
 hc_packet_t* packet_snip_to_bytes(hc_packet_t *packet, int lengthBits, int offsetBits) {
@@ -100,7 +118,7 @@ long long int packet_to_int(hc_packet_t* packet) {
         result = result << 8;
         result += packet->data[i];
     }
-    free_packet(packet);
+    // free_packet(packet);
     return result;
 }
 

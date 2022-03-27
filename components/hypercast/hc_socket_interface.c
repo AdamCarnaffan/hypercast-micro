@@ -41,6 +41,8 @@ void hc_socket_interface_send_handler(void *pvParameters) {
         // If no data, pause then try again
         if (packet == NULL) { vTaskDelay(500 / portTICK_PERIOD_MS); continue; }
 
+        ESP_LOGI(TAG, "Sending packet, send buffer length: %d", hypercast->sendBuffer->current_size);
+
         // Now it's time to send!
         // struct sockaddr_in to;
         // to.sin_family = AF_INET;
@@ -108,13 +110,15 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
     while (1) {
         ESP_LOGI(TAG, "Waiting for data...");
 
-        char recvbuf[1024];
+        static char recvbuf[1024];
         char raddr_name[32] = { 0 };
 
         struct sockaddr_storage raddr; // Large enough for both IPv4 or IPv6
         socklen_t socklen = sizeof(raddr);
+        ESP_LOGI(TAG, "Receiving packet");
         int len = recvfrom(sock, recvbuf, sizeof(recvbuf)-1, 0,
                             (struct sockaddr *)&raddr, &socklen);
+        ESP_LOGI(TAG, "Packet Received");
         if (len < 0) {
             ESP_LOGE(TAG, "multicast recvfrom failed: errno %d", errno);
             return; // This handler shouldn't return

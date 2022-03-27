@@ -5,6 +5,8 @@
 
 #include "esp_log.h"
 
+#include <pthread.h>
+
 // First do our definitions
 #define HC_BUFFER_DATA_MAX 1024
 
@@ -19,6 +21,7 @@ typedef struct hc_buffer {
     int current_size;
     int capacity;
     int front;
+    pthread_mutex_t buffer_lock;
 } hc_buffer_t;
 
 // Now shape out the functions

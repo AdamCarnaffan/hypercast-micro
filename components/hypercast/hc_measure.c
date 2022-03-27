@@ -129,6 +129,8 @@ void log_nodestate(hypercast_t* hypercast) {
     write_bytes(data, MAX_MEMORY_AVAILABLE, 32, dataSize*8, HC_BUFFER_DATA_MAX);
     dataSize += 4;
 
+    ESP_LOGI(TAG, "Measure written to bytestream");
+
     // Put it together
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/octet-stream");

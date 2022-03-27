@@ -33,8 +33,8 @@ void hc_init(void *pvParameters) {
     hc_install_config(hypercast);
 
     // Run send receive handlers
-    xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, hypercast, 5, NULL);
-    xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, hypercast, 5, NULL);
+    xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 16384, hypercast, 5, NULL);
+    xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 8192, hypercast, 5, NULL);
     ESP_LOGI(TAG, "Handlers Started");
 
     // Now check if we're taking measurements at regular intervals as well

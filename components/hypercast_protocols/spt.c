@@ -260,7 +260,7 @@ protocol_spt* spt_protocol_from_config(uint32_t sourceLogicalAddress) {
     spt->treeInfoTable->id = sourceLogicalAddress;
     spt->treeInfoTable->physicalAddress = sourceLogicalAddress;
     spt->treeInfoTable->rootId = sourceLogicalAddress; // Designate self as root on start
-    spt->treeInfoTable->ancestorId = 0;
+    spt->treeInfoTable->ancestorId = sourceLogicalAddress; // Designate self as ancestor on start
     spt->treeInfoTable->cost = 0;
     spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(NULL);
     spt->treeInfoTable->sequenceNumber = 0;
@@ -298,6 +298,7 @@ void spt_maintenance(hypercast_t* hypercast) {
     protocol_spt* spt = (protocol_spt*)hypercast->protocol;
 
     // First check necessity of maintenance
+    ESP_LOGI(TAG, "Current: %llu, Last: %llu, Diff: %llu", currentTime, spt->lastBeacon, currentTime - spt->lastBeacon);
     if (currentTime - spt->lastBeacon < spt->heartbeatTime) {
         return;
     }
@@ -309,48 +310,56 @@ void spt_maintenance(hypercast_t* hypercast) {
     ESP_LOGI(TAG, "Maintaining SPT");
 
     // 1. Generate beacon message base
-    spt_msg_beacon_t *beaconMessage = malloc(sizeof(spt_msg_beacon_t));
+    spt_msg_beacon_t beaconMessage;
     // 2. Populate state information
     // Sender table with 1 entry (because we only use 1 interface)
     // We need to copy it here so that the beacon free can free it later!
-    beaconMessage->senderTable = malloc(sizeof(hc_sender_table_t));
-    beaconMessage->senderTable->size = hypercast->senderTable->size;
-    beaconMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage->senderTable->size);
-    for (int i=0;i<beaconMessage->senderTable->size;i++) {
+    beaconMessage.senderTable = malloc(sizeof(hc_sender_table_t));
+    beaconMessage.senderTable->size = hypercast->senderTable->size;
+    beaconMessage.senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage.senderTable->size);
+    beaconMessage.senderTable->sourceAddressLogical = hypercast->senderTable->sourceAddressLogical;
+    for (int i=0;i<beaconMessage.senderTable->size;i++) {
         // Allocation is unnecessary here
-        beaconMessage->senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
-        beaconMessage->senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
-        beaconMessage->senderTable->entries[i]->hash = hypercast->senderTable->entries[i]->hash;
-        beaconMessage->senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
-        beaconMessage->senderTable->entries[i]->address = hypercast->senderTable->entries[i]->address;
-        beaconMessage->senderTable->entries[i]->port = hypercast->senderTable->entries[i]->port;
+        beaconMessage.senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
+        beaconMessage.senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
+        beaconMessage.senderTable->entries[i]->hash = hypercast->senderTable->entries[i]->hash;
+        beaconMessage.senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
+        beaconMessage.senderTable->entries[i]->address = malloc(sizeof(hc_ipv4_addr_t));
+        memcpy(beaconMessage.senderTable->entries[i]->address, hypercast->senderTable->entries[i]->address, sizeof(hc_ipv4_addr_t));
+        // beaconMessage.senderTable->entries[i]->address = hypercast->senderTable->entries[i]->address;
+        beaconMessage.senderTable->entries[i]->port = hypercast->senderTable->entries[i]->port;
     }
-    beaconMessage->senderTable->sourceAddressLogical = hypercast->senderTable->sourceAddressLogical;
+
     // Misc data
-    beaconMessage->rootAddressLogical = spt->id;
-    beaconMessage->parentAddressLogical = spt->treeInfoTable->ancestorId;
-    beaconMessage->cost = spt->treeInfoTable->cost;
-    beaconMessage->timestamp = currentTime; // Needs to be real epoch timestamp
-    beaconMessage->senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
-    beaconMessage->reliability = spt_pathmetric_minimumcost(NULL);
+    beaconMessage.rootAddressLogical = spt->treeInfoTable->rootId;
+    beaconMessage.parentAddressLogical = spt->treeInfoTable->ancestorId;
+    beaconMessage.cost = spt->treeInfoTable->cost;
+    beaconMessage.timestamp = currentTime; // Needs to be real epoch timestamp
+    beaconMessage.senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
+    beaconMessage.reliability = spt_pathmetric_minimumcost(NULL);
     // Adjacency Table
-    beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
-    beaconMessage->adjacencyTable->size = spt->adjacencyTable->size;
-    beaconMessage->adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
+    beaconMessage.adjacencyTable = malloc(sizeof(adjacency_table_t));
+    beaconMessage.adjacencyTable->size = spt->adjacencyTable->size;
+    beaconMessage.adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
     for (i=0; i<spt->adjacencyTable->size; i++) {
         // Allocation is unnecessary here
-        beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
-        beaconMessage->adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
-        beaconMessage->adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
+        beaconMessage.adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
+        beaconMessage.adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
+        beaconMessage.adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
     }
+
     // 3. Encode it
-    hc_packet_t *packet = spt_encode(beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
+    hc_packet_t *packet = spt_encode(&beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
     // 4. Send it off
+    ESP_LOGI(TAG, "Sending Beacon Message");
     hc_push_buffer(hypercast->sendBuffer, packet->data, packet->size);
     // 5. Update last beacon time
     spt->lastBeacon = currentTime;
+
     // 6. Free memory
-    spt_free_beacon_message(beaconMessage);
+    free_packet(packet);
+
+    // Run everything but the timeouts
 
     // First we'll timeout the adjacency entries
     if (spt->adjacencyTable->size > 0) {
@@ -359,14 +368,14 @@ void spt_maintenance(hypercast_t* hypercast) {
                 // Then we have a node that has timed out
                 // We'll remove it from the adjacency table
                 // And we'll set i back by one because we've moved table entries to fill this index again
-                pt_spt_adjacency_entry_t *entry = spt->adjacencyTable->entries[i];
+                // pt_spt_adjacency_entry_t* entry = spt->adjacencyTable->entries[i];
                 for (int j=i; j<spt->adjacencyTable->size; j++) {
                     spt->adjacencyTable->entries[j] = spt->adjacencyTable->entries[j+1];
                 }
                 spt->adjacencyTable->size--;
                 ESP_LOGI(TAG, "Timeout Mechanism has detected that a node left the network");
                 // Now we'll free the entry
-                free(entry);
+                // free(entry);
                 i--;
             }
         }
@@ -394,22 +403,22 @@ void spt_maintenance(hypercast_t* hypercast) {
                 }
                 ESP_LOGI(TAG, "Timeout Mechanism has detected that a node left the neighborhood");
                 // Now we'll free the entry
-                free(entry);
+                // free(entry);
                 i--;
             }
         }
     }
 
     // TEMP: Whenever we finish maintenance, send an overlay message out!
-    char payload[] = "Hello World from ESP32!";
-    hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init_with_payload(hypercast, payload, strlen(payload));
+    // char payload[] = "Hello World from ESP32!";
+    // hc_msg_overlay_t *overlayMessage = hc_msg_overlay_init_with_payload(hypercast, payload, strlen(payload));
     // Then encode it
-    hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
+    // hc_packet_t *packet2 = hc_msg_overlay_encode(overlayMessage);
     // Then send it off
-    hc_push_buffer(hypercast->sendBuffer, packet2->data, packet2->size);
+    // hc_push_buffer(hypercast->sendBuffer, packet2->data, packet2->size);
     // Then free the message
-    free(packet2);
-    hc_msg_overlay_free(overlayMessage);
+    // free_packet(packet2);
+    // hc_msg_overlay_free(overlayMessage);
 
     ESP_LOGI(TAG, "SPT Maintenance Finished");
 }
@@ -420,13 +429,17 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
     // This section is a replication of the logic found in the SPT protocol manual
     // at https://www.comm.utoronto.ca/hypercast/material/SPT_Protocol_03-20-05.pdf on pages 18-20
 
+    ESP_LOGI(TAG, "Processing Beacon Message");
+
     // Set up globals
     int i;
     protocol_spt* spt = (protocol_spt*)hypercast->protocol;
 
     // Once we've received a message from anywhere, use it to update the local clock time
-    if (get_epoch() < HC_FIXED_TIME_MIN_VALUE + 80000) {
+    // Note: We need to check that the msg is from real time and not another microcontroller with no clue
+    if (get_epoch() < HC_FIXED_TIME_MIN_VALUE + 80000 && msg->timestamp > HC_FIXED_TIME_MIN_VALUE + 80000) {
         // We need to set the time to something reasonable
+        ESP_LOGI(TAG, "Updated local time to match network time");
         set_epoch(msg->timestamp);
     }
 
@@ -534,42 +547,6 @@ void spt_handle_beacon_message(spt_msg_beacon_t* msg, hypercast_t* hypercast) {
             spt->treeInfoTable->ancestorId = 0;
             spt->treeInfoTable->rootId = spt->treeInfoTable->id;
         }
-
-        // Done!
-    // } else if (msg->senderTable->sourceAddressLogical == spt->treeInfoTable->ancestorId) { 
-    //     if (msg->senderTable->sourceAddressLogical > spt->treeInfoTable->id) {
-    //         spt->treeInfoTable->rootId = spt->treeInfoTable->id;
-    //         spt->treeInfoTable->ancestorId = spt->treeInfoTable->id;
-    //         spt->treeInfoTable->cost = 0;
-    //         spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(msg);
-
-    //         // Then remove ancestor entry
-    //         for (i=0;i<spt->neighborhoodTable->size;i++) {
-    //             if (spt->neighborhoodTable->entries[i]->isAncestor) {
-    //                 spt_remove_neighbor(spt, spt->neighborhoodTable->entries[i]->neighborId);
-    //                 break;
-    //             }
-    //         }
-    //         // Done!
-    //     } else {
-    //         spt->treeInfoTable->rootId = msg->rootAddressLogical;
-    //         spt->treeInfoTable->ancestorId = msg->senderTable->sourceAddressLogical;
-    //         spt->treeInfoTable->cost = msg->cost + 1;
-    //         spt->treeInfoTable->sequenceNumber = 4; // TODO: Support sequence number
-    //         spt->treeInfoTable->pathMetric = spt_pathmetric_minimumcost(msg);
-
-    //         // Update ancestor entry with this message
-    //         for (i=0;i<spt->neighborhoodTable->size;i++) {
-    //             if (spt->neighborhoodTable->entries[i]->isAncestor) {
-    //                 spt->neighborhoodTable->entries[i]->rootId = msg->rootAddressLogical;
-    //                 spt->neighborhoodTable->entries[i]->cost = msg->cost + 1;
-    //                 spt->neighborhoodTable->entries[i]->timestamp = msg->timestamp;
-    //                 spt->neighborhoodTable->entries[i]->pathMetric = spt_pathmetric_minimumcost(msg);
-    //                 break;
-    //             }
-    //         }
-    //         // Done!
-    //     }
     } else if (msg->parentAddressLogical == spt->treeInfoTable->id) { // CASE: We are beacon parent
         // We're the parent of the sender, update neighbor table with descendant entry
         
@@ -734,18 +711,18 @@ bool spt_beacon_should_be_parent(spt_msg_beacon_t* msg, protocol_spt* spt) {
 }
 
 bool spt_node_is_better_than(uint32_t a, uint32_t b) {
-    return a > b;
+    return a < b;
 }
 
 void spt_remove_neighbor(protocol_spt* spt, uint32_t neighborId) {
     // Remove neighbor from neighborhood table
     for (int i=0;i<spt->neighborhoodTable->size;i++) {
         if (spt->neighborhoodTable->entries[i]->neighborId == neighborId) {
-            pt_spt_neighborhood_entry_t* entry = spt->neighborhoodTable->entries[i];
+            // pt_spt_neighborhood_entry_t* entry = spt->neighborhoodTable->entries[i];
             // Move last entry to fill the gap
             spt->neighborhoodTable->entries[i] = spt->neighborhoodTable->entries[spt->neighborhoodTable->size - 1];
             spt->neighborhoodTable->size--;
-            free(entry);
+            // free(entry);
             break;
         }
     }

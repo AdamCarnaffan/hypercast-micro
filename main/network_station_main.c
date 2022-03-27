@@ -122,7 +122,7 @@ static void hc_socket_init(void* pvParameters) {
     }
 
     // Before mutlicast setup, set multicast TTL
-    uint8_t ttl = 255;
+    uint8_t ttl = 1;
     err = setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
     if (err < 0) {
         ESP_LOGE(TAG, "Error setting socket option TTL: %d", err);
@@ -173,63 +173,16 @@ static void hc_socket_init(void* pvParameters) {
     // hc_allocate_buffer(&hc_buffer, HC_BUFFER_SIZE);
     // Init some kind of engine here with send and receive buffers?
 
+    // Before we begin the hypercast engine, wait 3 seconds for the multicast to be setup
+    // vTaskDelay(3000 / portTICK_PERIOD_MS);
+
     // Now we finish socket init by starting the hypercast engine!
-    xTaskCreate(hc_init, "HYPERCAST_engine_handler", 4096, (void *)&sock, 5, NULL);
+    xTaskCreate(hc_init, "HYPERCAST_engine_handler", 8192, (void *)&sock, 5, NULL);
 
     // We finish socket init by deploying our hypercast functionalities
     // xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, (void *)&sock, 5, NULL);
     // xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, (void *)&sock, 5, NULL);
     while (1) { vTaskDelay(10000 / portTICK_PERIOD_MS); } // I don't know how to deal with this 
-    // Start listening
-    // while (1) {
-    //     ESP_LOGI(TAG, "Waiting for data...");
-    //     // Receive data
-    //     // Sample SPT Message: \x33\x00\x41\x00\x15\x67\xb2\x03\x02\xff\x01\xd2\x83\x06\xc0\xa8\x02\x64\xc1\x97\x08\xff\x41\xfd\xa7\x06\xe0\xe4\x13\x4e\x25\x00\xb9\x00\x00\x01\x18\x00\x00\x00\x21\x00\x00\x00\x21\x00\x00\x00\x01\x00\x00\x01\x7c\xd9\xac\x12\xde\x00\x00\x00\x01\x00\x00\x00\x21\x87\x27\x10
-    //     // Sample Overlay Message: \xd0\x31\x00\x00\x00\x00\x15\x00\xfe\x02\x04\x00\x00\x01\x52\x00\x00\x01\x52\x03\x01\x0b\x48\x65\x6c\x6c\x6f\x20\x57\x6f\x72\x6c\x64\x00\x01\x04\x00\x00\x01\x52
-    //     // Send them with echo -n -e "HEX HERE" | nc -u 192.168.2.69 9472
-
-    //     char recvbuf[1024];
-    //     char raddr_name[32] = { 0 };
-
-    //     struct sockaddr_storage raddr; // Large enough for both IPv4 or IPv6
-    //     socklen_t socklen = sizeof(raddr);
-    //     int len = recvfrom(sock, recvbuf, sizeof(recvbuf)-1, 0,
-    //                         (struct sockaddr *)&raddr, &socklen);
-    //     if (len < 0) {
-    //         ESP_LOGE(TAG, "multicast recvfrom failed: errno %d", errno);
-    //         err = -1;
-    //         break;
-    //     }
-    //     if (raddr.ss_family == AF_INET) {
-    //         inet_ntoa_r(((struct sockaddr_in *)&raddr)->sin_addr,
-    //                     raddr_name, sizeof(raddr_name)-1);
-    //     }
-    //     ESP_LOGI(TAG, "received %d bytes from %s:", len, raddr_name);
-    //     ESP_LOGI(TAG, "%s", recvbuf);
-    //     // Then push the recvbuf into the hypercast buffer
-    //     hc_push_buffer(&hc_buffer, recvbuf, len);
-        
-    //     // int len = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr*) &from, &fromlen);
-    //     // if (len < 0) {
-    //     //     ESP_LOGE(TAG, "Error receiving data: %d", len);
-    //     //     continue;
-    //     // }
-    //     // Print the data
-    //     // ESP_LOGI(TAG, "Received %d bytes from %s:%d", len, inet_ntoa(from.sin_addr), ntohs(from.sin_port));
-    //     // Send data
-    //     // len = 1024;
-    //     // char buf[1024] = "woof";
-    //     // struct sockaddr_in to;
-    //     // to.sin_family = AF_INET;
-    //     // to.sin_port = htons(9472);
-    //     // to.sin_addr.s_addr = inet_addr("224.228.19.78");
-    //     // len = sendto(sock, buf, len, 0, (struct sockaddr*) &to, sizeof(to));
-    //     // if (len < 0) {
-    //     //     ESP_LOGE(TAG, "Error sending data: %d", len);
-    //     //     continue;
-    //     // }
-    //     // ESP_LOGI(TAG, "Sent %d bytes to %s:%d", len, inet_ntoa(to.sin_addr), ntohs(to.sin_port));
-    // }
 }
 
 void wifi_init_sta(void)

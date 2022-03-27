@@ -37,6 +37,7 @@ void hc_protocol_parse(hc_packet_t *packet, long protocolId, hypercast_t *hyperc
     
     switch (protocolId) {
         case HC_PROTOCOL_SPT:
+            ESP_LOGI(TAG, "Protocol Packet Received for SPT");
             spt_parse(packet, protocolMessageType, overlayId, messageLength, hypercast);
             break;
         default:

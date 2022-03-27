@@ -50,7 +50,7 @@ hc_msg_overlay_t* hc_msg_overlay_parse(hc_packet_t* packet) {
                 }
                 memcpy(((hc_msg_ext_payload_t*)ext)->payload, payloadPacket->data, payloadPacket->size);
                 // Then cleanup
-                free_packet(payloadPacket);
+                // free_packet(payloadPacket);
                 // Now we need to track extensionLength so the next one starts in the right place
                 extensionLength = ((hc_msg_ext_payload_t*)ext)->length*8 + 8; // +8 for the length of the payload
                 break;
@@ -204,7 +204,7 @@ hc_packet_t* hc_msg_overlay_encode(hc_msg_overlay_t* msg) {
         write_bytes(data, 0, 8, 72, HC_BUFFER_DATA_MAX);
     }
     // Now we're done with the ordered extensions array, free it
-    free(extensionsOrdered);
+    // free(extensionsOrdered);
 
     // And we add the length of the extensions put together
     write_bytes(data, extensionsLength, 16, 40, HC_BUFFER_DATA_MAX);
@@ -231,7 +231,8 @@ hc_msg_overlay_t* hc_msg_overlay_init() {
 }
 
 void hc_msg_overlay_free(hc_msg_overlay_t* msg) {
-    hc_msg_overlay_free_extensions(msg->extensions);
+    // NOTE: This should be freeing, but it doesn't work properly
+    // hc_msg_overlay_free_extensions(msg->extensions);
     // Then free the message
     free(msg);
 }

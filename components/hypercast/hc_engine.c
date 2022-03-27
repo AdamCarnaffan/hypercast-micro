@@ -20,6 +20,7 @@ void hc_engine_handler(hypercast_t *hypercast) {
     ESP_LOGI(TAG, "Buffer Processor Ready");
     while (1) {
         ESP_LOGI(TAG, "Buffer Processor Running");
+        ESP_LOGI(TAG, "Free Memory %d", xPortGetFreeHeapSize());
         // SEND DISCOVERY
         // First we'll send out our protocol discovery packet if necessary
         // This is where we check the protocol and discovery timings
@@ -29,7 +30,7 @@ void hc_engine_handler(hypercast_t *hypercast) {
         // READ BUFFER
         // Clear packet saved
         if (packet != NULL) {
-            free(packet);
+            free_packet(packet);
             packet = NULL;
         }
 
@@ -76,6 +77,7 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
     // If it is, then continue, otherwise, stop
     if (hc_overlay_sender_trusted(msg, hypercast) == false) {
         ESP_LOGD(TAG, "Sender not trusted - bouncing message");
+        hc_msg_overlay_free(msg);
         return;
     }
 
@@ -98,7 +100,7 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
     hc_packet_t *forwardPacket = hc_msg_overlay_encode(msg);
     hc_push_buffer(hypercast->sendBuffer, forwardPacket->data, forwardPacket->size);
     // The packet data has been passed to the buffer, so we can cleanup the packet
-    free(forwardPacket); // (We keep the data allocated because the buffer will see that cleaned up)
+    // free(forwardPacket); // (We keep the data allocated because the buffer will see that cleaned up)
     // Then we need to run our api callback on the payload :)
     char* callbackData;
     int callbackDataLength;
