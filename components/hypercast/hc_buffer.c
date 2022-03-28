@@ -118,7 +118,7 @@ long long int packet_to_int(hc_packet_t* packet) {
         result = result << 8;
         result += packet->data[i];
     }
-    // free_packet(packet);
+    free_packet(packet);
     return result;
 }
 

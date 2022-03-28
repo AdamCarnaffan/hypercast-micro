@@ -311,46 +311,45 @@ void spt_maintenance(hypercast_t* hypercast) {
     ESP_LOGI(TAG, "Maintaining SPT");
 
     // 1. Generate beacon message base
-    spt_msg_beacon_t beaconMessage;
+    spt_msg_beacon_t* beaconMessage = malloc(sizeof(spt_msg_beacon_t));
     // 2. Populate state information
     // Sender table with 1 entry (because we only use 1 interface)
     // We need to copy it here so that the beacon free can free it later!
-    beaconMessage.senderTable = malloc(sizeof(hc_sender_table_t));
-    beaconMessage.senderTable->size = hypercast->senderTable->size;
-    beaconMessage.senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage.senderTable->size);
-    beaconMessage.senderTable->sourceAddressLogical = hypercast->senderTable->sourceAddressLogical;
-    for (int i=0;i<beaconMessage.senderTable->size;i++) {
+    beaconMessage->senderTable = malloc(sizeof(hc_sender_table_t));
+    beaconMessage->senderTable->size = hypercast->senderTable->size;
+    beaconMessage->senderTable->entries = malloc(sizeof(hc_sender_entry_t*)*beaconMessage->senderTable->size);
+    beaconMessage->senderTable->sourceAddressLogical = hypercast->senderTable->sourceAddressLogical;
+    for (int i=0;i<beaconMessage->senderTable->size;i++) {
         // Allocation is unnecessary here
-        beaconMessage.senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
-        beaconMessage.senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
-        beaconMessage.senderTable->entries[i]->hash = hypercast->senderTable->entries[i]->hash;
-        beaconMessage.senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
-        beaconMessage.senderTable->entries[i]->address = malloc(sizeof(hc_ipv4_addr_t));
-        memcpy(beaconMessage.senderTable->entries[i]->address, hypercast->senderTable->entries[i]->address, sizeof(hc_ipv4_addr_t));
-        // beaconMessage.senderTable->entries[i]->address = hypercast->senderTable->entries[i]->address;
-        beaconMessage.senderTable->entries[i]->port = hypercast->senderTable->entries[i]->port;
+        beaconMessage->senderTable->entries[i] = malloc(sizeof(hc_sender_entry_t));
+        beaconMessage->senderTable->entries[i]->type = hypercast->senderTable->entries[i]->type;
+        beaconMessage->senderTable->entries[i]->hash = hypercast->senderTable->entries[i]->hash;
+        beaconMessage->senderTable->entries[i]->addressLength = hypercast->senderTable->entries[i]->addressLength;
+        beaconMessage->senderTable->entries[i]->address = malloc(sizeof(hc_ipv4_addr_t));
+        memcpy(beaconMessage->senderTable->entries[i]->address, hypercast->senderTable->entries[i]->address, sizeof(hc_ipv4_addr_t));
+        beaconMessage->senderTable->entries[i]->port = hypercast->senderTable->entries[i]->port;
     }
 
     // Misc data
-    beaconMessage.rootAddressLogical = spt->treeInfoTable->rootId;
-    beaconMessage.parentAddressLogical = spt->treeInfoTable->ancestorId;
-    beaconMessage.cost = spt->treeInfoTable->cost;
-    beaconMessage.timestamp = currentTime; // Needs to be real epoch timestamp
-    beaconMessage.senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
-    beaconMessage.reliability = spt_pathmetric_minimumcost(NULL);
+    beaconMessage->rootAddressLogical = spt->treeInfoTable->rootId;
+    beaconMessage->parentAddressLogical = spt->treeInfoTable->ancestorId;
+    beaconMessage->cost = spt->treeInfoTable->cost;
+    beaconMessage->timestamp = currentTime; // Needs to be real epoch timestamp
+    beaconMessage->senderCount = spt->adjacencyTable->size; // Default for new beacon I think???
+    beaconMessage->reliability = spt_pathmetric_minimumcost(NULL);
     // Adjacency Table
-    beaconMessage.adjacencyTable = malloc(sizeof(adjacency_table_t));
-    beaconMessage.adjacencyTable->size = spt->adjacencyTable->size;
-    beaconMessage.adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
+    beaconMessage->adjacencyTable = malloc(sizeof(adjacency_table_t));
+    beaconMessage->adjacencyTable->size = spt->adjacencyTable->size;
+    beaconMessage->adjacencyTable->entries = malloc(sizeof(adjacency_table_entry_t*) * spt->adjacencyTable->size);
     for (i=0; i<spt->adjacencyTable->size; i++) {
         // Allocation is unnecessary here
-        beaconMessage.adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
-        beaconMessage.adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
-        beaconMessage.adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
+        beaconMessage->adjacencyTable->entries[i] = malloc(sizeof(adjacency_table_entry_t));
+        beaconMessage->adjacencyTable->entries[i]->id = spt->adjacencyTable->entries[i]->id;
+        beaconMessage->adjacencyTable->entries[i]->quality = spt->adjacencyTable->entries[i]->quality;
     }
 
     // 3. Encode it
-    hc_packet_t *packet = spt_encode(&beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
+    hc_packet_t *packet = spt_encode(beaconMessage, SPT_BEACON_MESSAGE_TYPE, hypercast);
     // 4. Send it off
     ESP_LOGI(TAG, "Sending Beacon Message");
     hc_push_buffer(hypercast->sendBuffer, packet->data, packet->size);
@@ -359,6 +358,8 @@ void spt_maintenance(hypercast_t* hypercast) {
 
     // 6. Free memory
     free_packet(packet);
+    spt_free_beacon_message(beaconMessage);
+    
 
     // Run everything but the timeouts
 
@@ -764,6 +765,7 @@ void spt_free_beacon_message(spt_msg_beacon_t* msg) {
     free(msg->adjacencyTable);
     // Free sender table
     for (int i=0;i<msg->senderTable->size;i++) {
+        // If the sender Table entry has an address, we need to free that too?
         free(msg->senderTable->entries[i]);
     }
     free(msg->senderTable->entries);

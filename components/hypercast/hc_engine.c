@@ -100,7 +100,7 @@ void hc_forward(hc_packet_t *packet, hypercast_t *hypercast) {
     hc_packet_t *forwardPacket = hc_msg_overlay_encode(msg);
     hc_push_buffer(hypercast->sendBuffer, forwardPacket->data, forwardPacket->size);
     // The packet data has been passed to the buffer, so we can cleanup the packet
-    // free(forwardPacket); // (We keep the data allocated because the buffer will see that cleaned up)
+    free_packet(forwardPacket);
     // Then we need to run our api callback on the payload :)
     char* callbackData;
     int callbackDataLength;
