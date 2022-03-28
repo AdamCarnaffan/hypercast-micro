@@ -15,9 +15,18 @@
 #include "hypercast.h"
 #include "hc_buffer.h"
 #include "hc_engine.h"
+#include "hc_lib.h"
 
 #define MULTICAST_IPV4_ADDR "224.228.19.78"
 #define MC_PORT 9472
+
+#define SOCKET_SEND_DELAY 600
+#define SOCKET_RECV_DELAY 200
+
+// Number of messages received / second (Should be less than than 1000/SOCKET_RECV_DELAY)
+#define FLUSH_MIN_MESSAGE_RATE 4
+#define FLUSH_MESSAGE_INTERVAL 50
+#define FLUSH_MAX_PACKETS 25
 
 static const char* TAG = "HC_SOCKET_INTERFACE";
 
@@ -86,7 +95,7 @@ void hc_socket_interface_send_handler(void *pvParameters) {
         ESP_LOGD(TAG, "Sent %d bytes to %s", res, "SOME ADDRESS");
 
         // This thread sleeps now to avoid flooding the port or overwriting its vibes
-        vTaskDelay(600 / portTICK_PERIOD_MS);
+        vTaskDelay(SOCKET_SEND_DELAY / portTICK_PERIOD_MS);
         
     }
 }
@@ -110,12 +119,48 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
     // convert to str for str comp
     esp_ip4addr_ntoa(&ipInfo.ip, localIpStr, localIPLen);
 
+    // Now some flush management
+    int messageCounter = 0;
+    int receiveStartTime = get_epoch();
+
     // Now start the receive event loop
     while (1) {
         ESP_LOGI(TAG, "Waiting for data...");
 
         static char recvbuf[1024];
         char raddr_name[32] = { 0 };
+
+        // Before we look to receive a message, let's manage flush
+        if (messageCounter >= FLUSH_MESSAGE_INTERVAL) {
+            int currentTime = get_epoch();
+            int timeDiff = currentTime - receiveStartTime; // In seconds
+            if ((float)messageCounter/timeDiff > FLUSH_MIN_MESSAGE_RATE) {
+                ESP_LOGI(TAG, "Flushing, msg/s is %f", (float)messageCounter/timeDiff);
+
+                // Setup the flush
+                struct timeval tv = {
+                    .tv_sec = 1,
+                    .tv_usec = 0,
+                };
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(sock, &rfds);
+                int flushCounter = 0;
+                // do the flush
+                while (select(sock+1, &rfds, NULL, NULL, &tv) > 0) {
+                    recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL, NULL);
+                    flushCounter++;
+                    if (flushCounter > FLUSH_MAX_PACKETS) {
+                        ESP_LOGI(TAG, "Flush complete, %d packets flushed", flushCounter);
+                        break;
+                    }
+                    // Maybe put a delay here?
+                }
+            }
+            // Then reset the flush manager
+            messageCounter = 0;
+            receiveStartTime = currentTime;
+        }
 
         struct sockaddr_storage raddr; // Large enough for both IPv4 or IPv6
         socklen_t socklen = sizeof(raddr);
@@ -143,6 +188,6 @@ void hc_socket_interface_recv_handler(void *pvParameters) {
         ESP_LOGI(TAG, "Unprocessed Buffer Length: %d", hypercast->receiveBuffer->current_size);
 
         // This thread sleeps now to avoid flooding the port or overwriting its vibes
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        vTaskDelay(SOCKET_RECV_DELAY / portTICK_PERIOD_MS);
     }
 }
