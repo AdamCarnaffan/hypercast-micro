@@ -55,6 +55,9 @@ void hc_install_config(hypercast_t *hypercast) {
         sourceLogicalGenerated = esp_random() % 999;
     }
 
+    // Uncomment this line to set a hard ID for the node
+    // sourceLogicalGenerated = 360;
+
     // Before looking at protocol, let's use the interface to setup the senderTable
     hypercast->senderTable = malloc(sizeof(hc_sender_table_t));
     hypercast->senderTable->size = 1;

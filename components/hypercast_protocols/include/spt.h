@@ -28,7 +28,6 @@
 #define SPT_NEIGHBOR_TIMEOUT 8
 #define SPT_MESSAGE_BEACON_TIME_INTERVAL 1000
 
-// Defaults that I recorded from config but don't understand yet
 #define SPT_TOPOLOGY_POLICY 0 // "Cost"
 #define SPT_MESSAGE_MAX_AGE 5000
 #define SPT_ROOT_HISTORY_TIMEOUT 20000

@@ -229,7 +229,6 @@ hc_msg_overlay_t* hc_msg_overlay_init() {
 }
 
 void hc_msg_overlay_free(hc_msg_overlay_t* msg) {
-    // NOTE: This should be freeing, but it doesn't work properly
     hc_msg_overlay_free_extensions(msg->extensions);
     // Then free the message
     free(msg);

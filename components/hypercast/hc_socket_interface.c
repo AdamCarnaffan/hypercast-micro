@@ -20,8 +20,8 @@
 #define MULTICAST_IPV4_ADDR "224.228.19.78"
 #define MC_PORT 9472
 
-#define SOCKET_SEND_DELAY 600
-#define SOCKET_RECV_DELAY 200
+#define SOCKET_SEND_DELAY 0.01
+#define SOCKET_RECV_DELAY 0.01
 
 // Number of messages received / second (Should be less than than 1000/SOCKET_RECV_DELAY)
 #define FLUSH_MIN_MESSAGE_RATE 4

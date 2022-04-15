@@ -182,7 +182,7 @@ static void hc_socket_init(void* pvParameters) {
     // We finish socket init by deploying our hypercast functionalities
     // xTaskCreate(hc_socket_interface_recv_handler, "HYPERCAST_receive_handler", 4096, (void *)&sock, 5, NULL);
     // xTaskCreate(hc_socket_interface_send_handler, "HYPERCAST_send_handler", 4096, (void *)&sock, 5, NULL);
-    while (1) { vTaskDelay(10000 / portTICK_PERIOD_MS); } // I don't know how to deal with this 
+    while (1) { vTaskDelay(10000 / portTICK_PERIOD_MS); } // This thread will spin forever to avoid work collapse
 }
 
 void wifi_init_sta(void)
